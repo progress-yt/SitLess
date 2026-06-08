@@ -1,0 +1,53 @@
+{
+  "name": "sitless",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows desktop sedentary reminder app.",
+  "main": "dist-electron/electron/main.js",
+  "scripts": {
+    "dev:renderer": "vite --host 127.0.0.1",
+    "dev:electron": "npm run build:main && set VITE_DEV_SERVER_URL=http://127.0.0.1:5173&& electron .",
+    "build:main": "tsc -p tsconfig.electron.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "smoke:electron": "npm run build && node scripts/electron-smoke.mjs",
+    "test": "vitest run",
+    "dist": "npm run build && set ELECTRON_BUILDER_CACHE=%CD%\\.cache\\electron-builder&& electron-builder"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.6",
+    "vitest": "^2.1.8"
+  },
+  "build": {
+    "appId": "com.sitless.app",
+    "productName": "SitLess",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "!dist-electron/**/*.test.js",
+      "!dist-electron/**/*.test.js.map",
+      "assets/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    }
+  }
+}

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-label="SitLess default reminder image">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#b7d9d1"/>
+      <stop offset="0.58" stop-color="#e8dfc6"/>
+      <stop offset="1" stop-color="#f3efe4"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#d6c2a1"/>
+      <stop offset="1" stop-color="#b98f70"/>
+    </linearGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#3d332c" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <rect y="720" width="1920" height="360" fill="url(#floor)"/>
+  <path d="M0 705 C260 670 420 748 650 710 C900 670 1085 625 1325 676 C1530 720 1690 690 1920 628 L1920 1080 L0 1080 Z" fill="#c8d2b6" opacity="0.56"/>
+  <circle cx="1512" cy="238" r="92" fill="#f5c364" opacity="0.86"/>
+  <g opacity="0.86">
+    <path d="M200 560 C345 405 500 380 630 525 C710 612 804 608 875 548 C976 462 1102 462 1210 555 C1298 632 1413 615 1500 537 C1600 447 1742 458 1868 574" fill="none" stroke="#4f8b7f" stroke-width="20" stroke-linecap="round"/>
+    <path d="M270 620 C450 505 640 525 800 650 C902 730 1018 735 1135 657 C1280 560 1450 565 1635 672" fill="none" stroke="#f0a05a" stroke-width="18" stroke-linecap="round" opacity="0.72"/>
+  </g>
+  <g filter="url(#softShadow)">
+    <rect x="520" y="465" width="760" height="148" rx="22" fill="#6c5a48"/>
+    <rect x="610" y="310" width="580" height="285" rx="20" fill="#273638"/>
+    <rect x="642" y="342" width="516" height="210" rx="8" fill="#7fb3aa"/>
+    <rect x="720" y="585" width="360" height="42" rx="10" fill="#47392f"/>
+    <rect x="838" y="626" width="124" height="92" rx="16" fill="#5a493b"/>
+    <rect x="730" y="714" width="340" height="34" rx="17" fill="#4b3e35"/>
+  </g>
+  <g filter="url(#softShadow)">
+    <rect x="1330" y="432" width="62" height="300" rx="31" fill="#587a63"/>
+    <path d="M1354 462 C1245 390 1212 300 1282 242 C1360 178 1454 244 1436 344 C1424 414 1398 451 1354 462 Z" fill="#70a36f"/>
+    <path d="M1364 480 C1467 401 1578 392 1618 474 C1662 564 1576 641 1470 608 C1402 587 1374 542 1364 480 Z" fill="#5d946d"/>
+    <path d="M1335 506 C1226 496 1142 562 1175 652 C1208 742 1348 738 1390 635 C1415 574 1386 528 1335 506 Z" fill="#78ad7c"/>
+    <rect x="1287" y="718" width="150" height="86" rx="20" fill="#b06f52"/>
+  </g>
+  <g filter="url(#softShadow)">
+    <rect x="352" y="676" width="160" height="74" rx="16" fill="#d7a35f"/>
+    <rect x="392" y="504" width="78" height="190" rx="39" fill="#e3c08c"/>
+    <path d="M432 518 C375 482 348 432 374 382 C400 332 468 332 494 382 C520 432 489 484 432 518 Z" fill="#f0d4a4"/>
+  </g>
+  <g opacity="0.12">
+    <rect x="0" y="0" width="1920" height="1080" fill="#18231f"/>
+  </g>
+</svg>

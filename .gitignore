@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.cache/
+.tmp-electron-smoke/
+.tmp-preview-user-data/
+*.log
