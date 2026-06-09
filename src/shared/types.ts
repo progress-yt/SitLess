@@ -39,6 +39,7 @@ export interface AppSettings {
   launchAtStartup: boolean;
   hasSeenStartupPrompt: boolean;
   customReminderImagePath: string | null;
+  restPromptText: string;
   updatedAtIso: string;
 }
 
@@ -46,7 +47,57 @@ export interface DailyStats {
   reminders: number;
   completed: number;
   skipped: number;
-  workdayStatus: WorkdayStatus;
+}
+
+export type StatsPeriod = 'day' | 'week' | 'month';
+
+export interface StatsSummary extends DailyStats {
+  period: StatsPeriod;
+  startDateKey: string;
+  endDateKey: string;
+  activeDays: number;
+  completionRate: number;
+}
+
+export interface StatsOverview {
+  day: StatsSummary;
+  week: StatsSummary;
+  month: StatsSummary;
+}
+
+export interface DailyDetailRecord extends DailyStats {
+  dateKey: string;
+  workStatus: WorkdayStatus;
+  workStartedAtIso: string | null;
+  workEndedAtIso: string | null;
+  completionRate: number;
+}
+
+export interface DailyRecordCorrection extends DailyStats {
+  dateKey: string;
+  workStatus: WorkdayStatus;
+  workStartedAtIso: string | null;
+  workEndedAtIso: string | null;
+}
+
+export interface DaySession {
+  status: WorkdayStatus;
+  startedAtIso: string | null;
+  endedAtIso: string | null;
+  startPromptedAtIso: string | null;
+}
+
+export interface ReminderRuntimeState {
+  pauseUntilIso: string | null;
+  mutedDateKey: string | null;
+}
+
+export interface DailyPoem {
+  dateKey: string;
+  content: string;
+  author: string | null;
+  title: string | null;
+  source: 'jinrishici' | 'fallback' | 'cache';
 }
 
 export interface AppSnapshot {
@@ -54,13 +105,16 @@ export interface AppSnapshot {
   status: AppStatus;
   settings: AppSettings;
   todayStats: DailyStats;
-  isWithinSchedule: boolean;
+  statsOverview: StatsOverview;
+  dailyRecords: DailyDetailRecord[];
+  canRunReminders: boolean;
   scheduleReason: 'weekday' | 'weekend' | 'before-work' | 'after-work' | 'lunch';
   remainingSeconds: number | null;
   nextReminderAtIso: string | null;
   pauseUntilIso: string | null;
   mutedToday: boolean;
-  workdayStatus: WorkdayStatus;
+  daySession: DaySession;
+  dailyPoem: DailyPoem | null;
   idleSeconds: number;
   imageRevision: number;
 }

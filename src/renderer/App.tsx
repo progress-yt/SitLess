@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock3,
   Coffee,
+  FilePenLine,
   Home,
   Image,
   LogIn,
@@ -15,16 +16,19 @@ import {
   RotateCcw,
   Settings2,
   SkipForward,
+  Table2,
   TimerReset,
+  TrendingUp,
   Volume2,
   VolumeX
 } from 'lucide-react';
-import type { AppSettings, AppSnapshot, AppStatus, ReminderMode } from '../shared/types';
+import type { AppSettings, AppSnapshot, AppStatus, ReminderMode, StatsPeriod, StatsSummary } from '../shared/types';
 import { sitlessApi } from './api';
 import defaultReminderUrl from '../../assets/default-reminder.svg?url';
+import { DEFAULT_REST_PROMPT_OPTIONS } from '../shared/defaults';
 
 type ViewName = 'main' | 'countdown' | 'fullscreen';
-type MainTab = 'home' | 'settings';
+type MainTab = 'home' | 'records' | 'settings';
 
 const STATUS_LABELS: Record<AppStatus, string> = {
   'outside-schedule': '不在提醒时段',
@@ -105,14 +109,14 @@ function MainView({ snapshot }: { snapshot: AppSnapshot }) {
         </div>
 
         <div className="header-actions">
-          <button className="icon-text-button" type="button" onClick={() => sitlessApi.testReminderFlow()}>
-            <Play size={17} />
-            测试提醒
-          </button>
           <div className="segmented-control" role="tablist" aria-label="主界面">
             <button type="button" className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')}>
               <Home size={16} />
               状态
+            </button>
+            <button type="button" className={tab === 'records' ? 'active' : ''} onClick={() => setTab('records')}>
+              <Table2 size={16} />
+              详细记录
             </button>
             <button type="button" className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>
               <Settings2 size={16} />
@@ -133,13 +137,15 @@ function MainView({ snapshot }: { snapshot: AppSnapshot }) {
         </div>
       </section>
 
-      {tab === 'home' ? <HomeView snapshot={snapshot} /> : <SettingsView snapshot={snapshot} />}
+      {tab === 'home' ? <HomeView snapshot={snapshot} /> : tab === 'records' ? <RecordsView snapshot={snapshot} /> : <SettingsView snapshot={snapshot} />}
     </main>
   );
 }
 
 function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
   const progress = getProgress(snapshot);
+  const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('day');
+  const selectedStats = snapshot.statsOverview[statsPeriod];
 
   return (
     <div className="main-grid">
@@ -156,18 +162,26 @@ function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
           <button
             className="primary-button"
             type="button"
-            disabled={snapshot.workdayStatus === 'working'}
+            disabled={snapshot.daySession.status === 'working'}
             onClick={() => sitlessApi.startWorkday()}
           >
             <LogIn size={17} />
-            {snapshot.workdayStatus === 'off-work' ? '继续提醒' : '我已上班'}
+            {snapshot.daySession.status === 'off-work' ? '继续提醒' : '我已上班'}
           </button>
-          <button type="button" disabled={snapshot.workdayStatus !== 'working'} onClick={() => sitlessApi.endWorkday()}>
+          <button type="button" disabled={snapshot.daySession.status !== 'working'} onClick={() => sitlessApi.endWorkday()}>
             <LogOut size={17} />
             我已下班
           </button>
         </div>
       </section>
+
+      {snapshot.dailyPoem ? (
+        <section className="workspace-panel poem-panel">
+          <span>今日诗词</span>
+          <blockquote>{snapshot.dailyPoem.content}</blockquote>
+          <small>{formatPoemSource(snapshot.dailyPoem)}</small>
+        </section>
+      ) : null}
 
       <section className="workspace-panel primary-workspace">
         <div className="panel-heading">
@@ -188,9 +202,9 @@ function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
         </div>
 
         <div className="quick-actions">
-          <button type="button" onClick={() => sitlessApi.pauseForHour()}>
-            <Pause size={17} />
-            暂停 1 小时
+          <button type="button" onClick={() => snapshot.status === 'paused' ? sitlessApi.resumeReminders() : sitlessApi.pauseForHour()}>
+            {snapshot.status === 'paused' ? <Play size={17} /> : <Pause size={17} />}
+            {snapshot.status === 'paused' ? '继续提醒' : '暂停 1 小时'}
           </button>
           <button type="button" onClick={() => sitlessApi.muteToday()}>
             <Power size={17} />
@@ -202,19 +216,44 @@ function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
       <section className="workspace-panel side-context">
         <div className="panel-heading">
           <div>
-            <span>今日统计</span>
-            <h3>{formatDate(new Date(snapshot.nowIso))}</h3>
+            <span>统计</span>
+            <h3>{getStatsPeriodLabel(statsPeriod)}</h3>
           </div>
-          <CheckCircle2 size={20} />
+          <TrendingUp size={20} />
+        </div>
+
+        <div className="segmented-control stats-tabs" role="group" aria-label="统计周期">
+          <StatsPeriodButton period="day" current={statsPeriod} onSelect={setStatsPeriod} />
+          <StatsPeriodButton period="week" current={statsPeriod} onSelect={setStatsPeriod} />
+          <StatsPeriodButton period="month" current={statsPeriod} onSelect={setStatsPeriod} />
         </div>
 
         <div className="metric-list">
-          <Metric label="提醒" value={snapshot.todayStats.reminders} />
-          <Metric label="已起身" value={snapshot.todayStats.completed} />
-          <Metric label="跳过" value={snapshot.todayStats.skipped} />
+          <Metric label="提醒" value={selectedStats.reminders} />
+          <Metric label="已起身" value={selectedStats.completed} />
+          <Metric label="跳过" value={selectedStats.skipped} />
         </div>
+
+        <StatsSummaryMeta summary={selectedStats} />
       </section>
+
     </div>
+  );
+}
+
+function RecordsView({ snapshot }: { snapshot: AppSnapshot }) {
+  return (
+    <section className="workspace-panel detail-records-panel">
+      <div className="panel-heading">
+        <div>
+          <span>详细记录</span>
+          <h3>最近 30 天</h3>
+        </div>
+        <Table2 size={20} />
+      </div>
+
+      <DailyRecordsTable records={snapshot.dailyRecords} />
+    </section>
   );
 }
 
@@ -366,6 +405,39 @@ function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
       <section className="workspace-panel">
         <div className="panel-heading">
           <div>
+            <span>休息提醒</span>
+            <h3>提醒标语</h3>
+          </div>
+          <CheckCircle2 size={20} />
+        </div>
+
+        <label className="field">
+          <span>自定义标语</span>
+          <input
+            type="text"
+            maxLength={36}
+            value={settings.restPromptText}
+            onChange={(event) => update({ restPromptText: event.target.value })}
+          />
+        </label>
+
+        <div className="prompt-options" aria-label="默认标语">
+          {DEFAULT_REST_PROMPT_OPTIONS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={settings.restPromptText === option ? 'active' : ''}
+              onClick={() => update({ restPromptText: option })}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="workspace-panel">
+        <div className="panel-heading">
+          <div>
             <span>系统</span>
             <h3>常驻设置</h3>
           </div>
@@ -416,7 +488,7 @@ function CountdownView({ snapshot }: { snapshot: AppSnapshot }) {
     <main className="countdown-window">
       <div className="countdown-topline">
         <Bell size={18} />
-        该起身了
+        {snapshot.settings.restPromptText}
       </div>
       <div className="countdown-number">{seconds}</div>
       <div className="countdown-track">
@@ -444,6 +516,10 @@ function FullscreenView({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <main className="fullscreen-reminder">
       <img src={getReminderImageUrl(snapshot)} alt="休息提醒" />
+      <div className="fullscreen-caption">
+        <span>休息提醒</span>
+        <strong>{snapshot.settings.restPromptText}</strong>
+      </div>
       <button type="button" onClick={() => sitlessApi.completeRest()}>
         <CheckCircle2 size={22} />
         我已起身
@@ -475,6 +551,174 @@ function Metric({ label, value }: { label: string; value: number }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function StatsPeriodButton({
+  period,
+  current,
+  onSelect
+}: {
+  period: StatsPeriod;
+  current: StatsPeriod;
+  onSelect: (period: StatsPeriod) => void;
+}) {
+  return (
+    <button type="button" className={period === current ? 'active' : ''} onClick={() => onSelect(period)}>
+      {getStatsPeriodShortLabel(period)}
+    </button>
+  );
+}
+
+function StatsSummaryMeta({ summary }: { summary: StatsSummary }) {
+  return (
+    <div className="stats-meta">
+      <div>
+        <span>完成率</span>
+        <strong>{formatPercent(summary.completionRate)}</strong>
+      </div>
+      <div>
+        <span>活跃天数</span>
+        <strong>{summary.activeDays}</strong>
+      </div>
+    </div>
+  );
+}
+
+function DailyRecordsTable({ records }: { records: AppSnapshot['dailyRecords'] }) {
+  return (
+    <div className="records-table-wrap">
+      <table className="records-table">
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>状态</th>
+            <th>上班</th>
+            <th>下班</th>
+            <th>提醒</th>
+            <th>已起身</th>
+            <th>跳过</th>
+            <th>完成率</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((record) => (
+            <DailyRecordRow key={record.dateKey} record={record} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DailyRecordRow({ record }: { record: AppSnapshot['dailyRecords'][number] }) {
+  const [draft, setDraft] = useState(() => createRecordDraft(record));
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraft(createRecordDraft(record));
+    }
+  }, [isEditing, record]);
+
+  const save = async () => {
+    setIsSaving(true);
+    await sitlessApi.updateDailyRecord({
+      dateKey: record.dateKey,
+      workStatus: draft.workStatus,
+      workStartedAtIso: combineDateAndTime(record.dateKey, draft.startTime),
+      workEndedAtIso: combineDateAndTime(record.dateKey, draft.endTime),
+      reminders: draft.reminders,
+      completed: draft.completed,
+      skipped: draft.skipped
+    });
+    setIsSaving(false);
+    setIsEditing(false);
+  };
+
+  const cancel = () => {
+    setDraft(createRecordDraft(record));
+    setIsEditing(false);
+  };
+
+  const completionRate = draft.reminders > 0 ? draft.completed / draft.reminders : 0;
+
+  return (
+    <>
+      <tr className={isEditing ? 'record-row editing' : 'record-row'}>
+        <td>
+          <strong>{formatRecordDate(record.dateKey)}</strong>
+          <span>{record.dateKey}</span>
+        </td>
+        <td>{getWorkStatusLabel(record.workStatus)}</td>
+        <td>{formatIsoClock(record.workStartedAtIso)}</td>
+        <td>{formatIsoClock(record.workEndedAtIso)}</td>
+        <td>{record.reminders}</td>
+        <td>{record.completed}</td>
+        <td>{record.skipped}</td>
+        <td>{formatPercent(record.completionRate)}</td>
+        <td>
+          <button className="record-save-button" type="button" onClick={() => setIsEditing(true)}>
+            <FilePenLine size={15} />
+            编辑
+          </button>
+        </td>
+      </tr>
+      {isEditing ? (
+        <tr className="record-edit-row">
+          <td colSpan={9}>
+            <div className="record-edit-panel">
+              <label>
+                <span>工作状态</span>
+                <select
+                  className="record-status-select"
+                  value={draft.workStatus}
+                  onChange={(event) => setDraft({ ...draft, workStatus: event.target.value as AppSnapshot['daySession']['status'] })}
+                >
+                  <option value="not-started">未开始</option>
+                  <option value="working">工作中</option>
+                  <option value="off-work">已下班</option>
+                </select>
+              </label>
+              <label>
+                <span>上班</span>
+                <input className="record-time-input" type="time" value={draft.startTime} onChange={(event) => setDraft({ ...draft, startTime: event.target.value })} />
+              </label>
+              <label>
+                <span>下班</span>
+                <input className="record-time-input" type="time" value={draft.endTime} onChange={(event) => setDraft({ ...draft, endTime: event.target.value })} />
+              </label>
+              <label>
+                <span>提醒</span>
+                <input className="record-number-input" type="number" min={0} value={draft.reminders} onChange={(event) => setDraft({ ...draft, reminders: normalizeDraftCount(event.target.value) })} />
+              </label>
+              <label>
+                <span>已起身</span>
+                <input className="record-number-input" type="number" min={0} value={draft.completed} onChange={(event) => setDraft({ ...draft, completed: normalizeDraftCount(event.target.value) })} />
+              </label>
+              <label>
+                <span>跳过</span>
+                <input className="record-number-input" type="number" min={0} value={draft.skipped} onChange={(event) => setDraft({ ...draft, skipped: normalizeDraftCount(event.target.value) })} />
+              </label>
+              <div className="record-edit-rate">
+                <span>完成率</span>
+                <strong>{formatPercent(completionRate)}</strong>
+              </div>
+              <div className="record-edit-actions">
+                <button className="primary-button" type="button" onClick={save} disabled={isSaving}>
+                  保存
+                </button>
+                <button type="button" onClick={cancel} disabled={isSaving}>
+                  取消
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }
 
@@ -582,11 +826,11 @@ function getScheduleLabel(snapshot: AppSnapshot): string {
 }
 
 function getWorkdayLabel(snapshot: AppSnapshot): string {
-  if (snapshot.workdayStatus === 'working') {
+  if (snapshot.daySession.status === 'working') {
     return '提醒运行中';
   }
 
-  if (snapshot.workdayStatus === 'off-work') {
+  if (snapshot.daySession.status === 'off-work') {
     return '当天已结束';
   }
 
@@ -622,6 +866,88 @@ function formatClock(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-function formatDate(date: Date): string {
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
+function formatIsoClock(value: string | null): string {
+  if (!value) {
+    return '--';
+  }
+
+  return formatClock(new Date(value));
+}
+
+function isoToTimeInput(value: string | null): string {
+  if (!value) {
+    return '';
+  }
+
+  return formatClock(new Date(value));
+}
+
+function combineDateAndTime(dateKey: string, time: string): string | null {
+  if (!time) {
+    return null;
+  }
+
+  return new Date(`${dateKey}T${time}:00`).toISOString();
+}
+
+function createRecordDraft(record: AppSnapshot['dailyRecords'][number]) {
+  return {
+    workStatus: record.workStatus,
+    startTime: isoToTimeInput(record.workStartedAtIso),
+    endTime: isoToTimeInput(record.workEndedAtIso),
+    reminders: record.reminders,
+    completed: record.completed,
+    skipped: record.skipped
+  };
+}
+
+function normalizeDraftCount(value: string): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function formatRecordDate(dateKey: string): string {
+  const [_year, month, day] = dateKey.split('-');
+  return `${Number(month)} 月 ${Number(day)} 日`;
+}
+
+function getWorkStatusLabel(status: AppSnapshot['daySession']['status']): string {
+  if (status === 'working') {
+    return '工作中';
+  }
+
+  if (status === 'off-work') {
+    return '已下班';
+  }
+
+  return '未开始';
+}
+
+function formatPoemSource(poem: NonNullable<AppSnapshot['dailyPoem']>): string {
+  const source = [poem.author, poem.title ? `《${poem.title}》` : null].filter(Boolean).join(' ');
+  return source || '今日诗词';
+}
+
+function getStatsPeriodLabel(period: StatsPeriod): string {
+  if (period === 'week') {
+    return '本周统计';
+  }
+  if (period === 'month') {
+    return '本月统计';
+  }
+  return '今日统计';
+}
+
+function getStatsPeriodShortLabel(period: StatsPeriod): string {
+  if (period === 'week') {
+    return '周';
+  }
+  if (period === 'month') {
+    return '月';
+  }
+  return '日';
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }

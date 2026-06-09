@@ -11,6 +11,8 @@
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:renderer",
     "start": "npm run build && electron .",
+    "preview:electron": "node scripts/electron-preview.mjs",
+    "preview:electron:fresh": "node scripts/electron-preview.mjs --fresh",
     "smoke:electron": "npm run build && node scripts/electron-smoke.mjs",
     "test": "vitest run",
     "dist": "npm run build && set ELECTRON_BUILDER_CACHE=%CD%\\.cache\\electron-builder&& electron-builder"

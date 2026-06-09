@@ -19,7 +19,9 @@ const child = spawn(electronPath, ['--remote-debugging-port=9333', '.'], {
   env: {
     ...process.env,
     SITLESS_USER_DATA_DIR: userDataDir,
-    SITLESS_SKIP_STARTUP_PROMPT: '1'
+    SITLESS_SKIP_GLOBAL_INSTANCE_LOCK: '1',
+    SITLESS_SKIP_STARTUP_PROMPT: '1',
+    SITLESS_SKIP_WORKDAY_PROMPT: '1'
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });

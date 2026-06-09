@@ -279,6 +279,30 @@ input[type="checkbox"] {
   gap: 10px;
 }
 
+.poem-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+}
+
+.poem-panel span {
+  color: rgba(36, 35, 31, 0.62);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.poem-panel blockquote {
+  margin: 0;
+  color: #24231f;
+  font-size: 20px;
+  line-height: 1.45;
+}
+
+.poem-panel small {
+  color: #6d6a61;
+  font-size: 13px;
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -392,6 +416,186 @@ input[type="checkbox"] {
   font-size: 28px;
 }
 
+.side-context {
+  display: flex;
+  flex-direction: column;
+}
+
+.stats-tabs {
+  width: 100%;
+  margin: -8px 0 14px;
+}
+
+.stats-tabs button {
+  flex: 1;
+}
+
+.stats-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.stats-meta div {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid rgba(38, 37, 32, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.stats-meta span {
+  color: #6d6a61;
+  font-size: 12px;
+}
+
+.stats-meta strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+}
+
+.detail-records-panel {
+  width: 100%;
+}
+
+.records-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid rgba(38, 37, 32, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.records-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.records-table th,
+.records-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(38, 37, 32, 0.1);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.records-table th {
+  color: #6d6a61;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.records-table th:first-child,
+.records-table td:first-child {
+  text-align: left;
+}
+
+.records-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.records-table td:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.records-table td:first-child strong {
+  color: #24231f;
+  font-size: 14px;
+}
+
+.records-table td:first-child span {
+  color: #6d6a61;
+  font-size: 12px;
+}
+
+.record-row.editing td {
+  background: rgba(47, 130, 120, 0.06);
+}
+
+.record-edit-row td {
+  padding: 0;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.record-edit-panel {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.1fr) repeat(2, minmax(112px, 0.8fr)) repeat(3, minmax(86px, 0.6fr)) minmax(86px, 0.6fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 14px;
+}
+
+.record-edit-panel label,
+.record-edit-rate {
+  display: grid;
+  gap: 6px;
+}
+
+.record-edit-panel label span,
+.record-edit-rate span {
+  color: #6d6a61;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.record-edit-rate strong {
+  min-height: 32px;
+  align-content: center;
+  font-size: 14px;
+}
+
+.record-status-select,
+.record-time-input,
+.record-number-input {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgba(38, 37, 32, 0.14);
+  border-radius: 8px;
+  color: #24231f;
+  background: #ffffff;
+  font: inherit;
+}
+
+.record-status-select {
+  min-width: 92px;
+}
+
+.record-time-input {
+  min-width: 106px;
+}
+
+.record-number-input {
+  width: 100%;
+  text-align: right;
+}
+
+.record-save-button {
+  min-height: 32px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.record-edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.record-edit-actions button {
+  min-height: 32px;
+  padding: 0 12px;
+}
+
 .settings-grid {
   display: grid;
   gap: 14px;
@@ -458,6 +662,25 @@ input[type="checkbox"] {
   background: #d8d4c8;
 }
 
+.prompt-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.prompt-options button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.prompt-options button.active {
+  color: #ffffff;
+  border-color: #2f8278;
+  background: #2f8278;
+}
+
 .countdown-window {
   display: grid;
   height: 100vh;
@@ -517,6 +740,33 @@ input[type="checkbox"] {
   object-fit: cover;
 }
 
+.fullscreen-caption {
+  position: absolute;
+  left: 34px;
+  bottom: 34px;
+  display: grid;
+  max-width: min(560px, calc(100vw - 240px));
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(31, 35, 33, 0.72);
+  backdrop-filter: blur(14px);
+}
+
+.fullscreen-caption span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fullscreen-caption strong {
+  overflow-wrap: anywhere;
+  font-size: 28px;
+  line-height: 1.18;
+}
+
 .fullscreen-reminder button {
   position: absolute;
   right: 34px;
@@ -568,7 +818,26 @@ input[type="checkbox"] {
     justify-content: flex-start;
   }
 
+  .record-edit-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .record-edit-actions {
+    justify-content: flex-start;
+  }
+
   .countdown-actions {
     grid-template-columns: 1fr;
+  }
+
+  .fullscreen-caption {
+    right: 18px;
+    bottom: 88px;
+    left: 18px;
+    max-width: none;
+  }
+
+  .fullscreen-caption strong {
+    font-size: 22px;
   }
 }

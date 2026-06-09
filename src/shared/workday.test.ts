@@ -5,7 +5,12 @@ import { getWorkdayGateStatus } from './workday';
 describe('workday gate', () => {
   it('waits for work confirmation after the fixed start time', () => {
     const settings = createDefaultSettings();
-    const gate = getWorkdayGateStatus(new Date('2026-06-05T09:10:00'), settings, 'not-started');
+    const gate = getWorkdayGateStatus(new Date('2026-06-05T09:10:00'), settings, {
+      status: 'not-started',
+      startedAtIso: null,
+      endedAtIso: null,
+      startPromptedAtIso: null
+    });
 
     expect(gate.canRunReminders).toBe(false);
     expect(gate.status).toBe('awaiting-work-start');
@@ -13,7 +18,12 @@ describe('workday gate', () => {
 
   it('runs reminders after work is confirmed', () => {
     const settings = createDefaultSettings();
-    const gate = getWorkdayGateStatus(new Date('2026-06-05T09:10:00'), settings, 'working');
+    const gate = getWorkdayGateStatus(new Date('2026-06-05T09:10:00'), settings, {
+      status: 'working',
+      startedAtIso: '2026-06-05T09:00:00.000Z',
+      endedAtIso: null,
+      startPromptedAtIso: null
+    });
 
     expect(gate.canRunReminders).toBe(true);
     expect(gate.status).toBe('ready');
@@ -21,7 +31,12 @@ describe('workday gate', () => {
 
   it('keeps reminders running after the configured end time while still working', () => {
     const settings = createDefaultSettings();
-    const gate = getWorkdayGateStatus(new Date('2026-06-05T19:30:00'), settings, 'working');
+    const gate = getWorkdayGateStatus(new Date('2026-06-05T19:30:00'), settings, {
+      status: 'working',
+      startedAtIso: '2026-06-05T09:00:00.000Z',
+      endedAtIso: null,
+      startPromptedAtIso: null
+    });
 
     expect(gate.canRunReminders).toBe(true);
     expect(gate.status).toBe('ready');
@@ -29,7 +44,12 @@ describe('workday gate', () => {
 
   it('stops reminders after work is finished for the day', () => {
     const settings = createDefaultSettings();
-    const gate = getWorkdayGateStatus(new Date('2026-06-05T19:30:00'), settings, 'off-work');
+    const gate = getWorkdayGateStatus(new Date('2026-06-05T19:30:00'), settings, {
+      status: 'off-work',
+      startedAtIso: '2026-06-05T09:00:00.000Z',
+      endedAtIso: '2026-06-05T18:30:00.000Z',
+      startPromptedAtIso: null
+    });
 
     expect(gate.canRunReminders).toBe(false);
     expect(gate.status).toBe('off-work');

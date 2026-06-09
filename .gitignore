@@ -5,4 +5,5 @@ release/
 .cache/
 .tmp-electron-smoke/
 .tmp-preview-user-data/
+.tmp-preview-user-data-*/
 *.log

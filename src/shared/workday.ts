@@ -1,5 +1,5 @@
 import { getScheduleStatus, type ScheduleStatus } from './schedule';
-import type { AppSettings, AppStatus, WorkdayStatus } from './types';
+import type { AppSettings, AppStatus, DaySession } from './types';
 
 export interface WorkdayGateStatus {
   canRunReminders: boolean;
@@ -7,18 +7,18 @@ export interface WorkdayGateStatus {
   schedule: ScheduleStatus;
 }
 
-export function getWorkdayGateStatus(date: Date, settings: AppSettings, workdayStatus: WorkdayStatus): WorkdayGateStatus {
+export function getWorkdayGateStatus(date: Date, settings: AppSettings, daySession: DaySession): WorkdayGateStatus {
   const schedule = getScheduleStatus(date, settings);
 
   if (schedule.reason === 'weekend' || schedule.reason === 'before-work') {
     return { canRunReminders: false, status: 'outside-schedule', schedule };
   }
 
-  if (workdayStatus === 'off-work') {
+  if (daySession.status === 'off-work') {
     return { canRunReminders: false, status: 'off-work', schedule };
   }
 
-  if (workdayStatus !== 'working') {
+  if (daySession.status !== 'working') {
     return { canRunReminders: false, status: 'awaiting-work-start', schedule };
   }
 

@@ -14,13 +14,17 @@ import {
   Tray
 } from 'electron';
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { createServer, Socket, type Server } from 'node:net';
 import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SettingsStore } from './settingsStore';
 import { StatsStore } from './statsStore';
+import { DaySessionStore } from './daySessionStore';
+import { RuntimeStateStore } from './runtimeStateStore';
+import { PoemStore } from './poemStore';
 import { ReminderController } from './reminderController';
 import { FALLBACK_TRAY_ICON_DATA_URL } from './trayIconData';
-import type { AppSettings, AppSnapshot, CountdownAction } from '../shared/types';
+import type { AppSettings, AppSnapshot, CountdownAction, DailyRecordCorrection } from '../shared/types';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -40,8 +44,15 @@ let fullscreenWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let settingsStore: SettingsStore;
 let statsStore: StatsStore;
+let daySessionStore: DaySessionStore;
+let runtimeStateStore: RuntimeStateStore;
+let poemStore: PoemStore;
 let controller: ReminderController;
 let isQuitting = false;
+let globalInstanceServer: Server | null = null;
+let pendingRelaunchPrompt = false;
+
+const GLOBAL_INSTANCE_PORT = 38373;
 
 if (process.env.SITLESS_USER_DATA_DIR) {
   app.setPath('userData', process.env.SITLESS_USER_DATA_DIR);
@@ -56,16 +67,26 @@ app.setName('SitLess');
 Menu.setApplicationMenu(null);
 
 app.on('second-instance', () => {
-  showMainWindow();
+  promptRelaunchExistingInstance();
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const hasGlobalInstanceLock = await ensureGlobalInstanceLock();
+  if (!hasGlobalInstanceLock) {
+    app.quit();
+    return;
+  }
+
   settingsStore = new SettingsStore();
   statsStore = new StatsStore();
+  daySessionStore = new DaySessionStore();
+  runtimeStateStore = new RuntimeStateStore();
+  poemStore = new PoemStore();
 
-  controller = new ReminderController(settingsStore, statsStore, {
+  controller = new ReminderController(settingsStore, statsStore, daySessionStore, runtimeStateStore, poemStore, {
     getIdleSeconds: () => powerMonitor.getSystemIdleTime(),
     showNotification,
+    confirmWorkdayStart,
     openCountdown: showCountdownWindow,
     closeCountdown: closeCountdownWindow,
     openFullscreen: showFullscreenWindow,
@@ -83,6 +104,11 @@ app.whenReady().then(() => {
   });
   controller.start();
   maybeAskStartupPreference();
+
+  if (pendingRelaunchPrompt) {
+    pendingRelaunchPrompt = false;
+    void promptRelaunchExistingInstance();
+  }
 });
 
 app.on('activate', () => {
@@ -92,6 +118,7 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   isQuitting = true;
   controller?.stop();
+  globalInstanceServer?.close();
 });
 
 app.on('window-all-closed', () => undefined);
@@ -134,6 +161,79 @@ function showMainWindow(): void {
 
   mainWindow.show();
   mainWindow.focus();
+}
+
+async function promptRelaunchExistingInstance(): Promise<void> {
+  if (!app.isReady()) {
+    pendingRelaunchPrompt = true;
+    return;
+  }
+
+  showMainWindow();
+
+  const result = await showMessageBox({
+    type: 'question',
+    title: 'SitLess 已在运行',
+    message: 'SitLess 已经启动。是否关闭当前实例并重新启动？',
+    buttons: ['重新启动', '继续使用当前实例'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true
+  });
+
+  if (result.response !== 0) {
+    return;
+  }
+
+  isQuitting = true;
+  app.relaunch();
+  app.exit(0);
+}
+
+async function ensureGlobalInstanceLock(): Promise<boolean> {
+  if (process.env.SITLESS_SKIP_GLOBAL_INSTANCE_LOCK === '1') {
+    return true;
+  }
+
+  return new Promise((resolve) => {
+    const server = createServer((socket) => {
+      socket.setEncoding('utf8');
+      socket.on('data', (message) => {
+        if (message.includes('relaunch-request')) {
+          void promptRelaunchExistingInstance();
+        }
+      });
+    });
+
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE') {
+        sendRelaunchRequestToExistingInstance().finally(() => resolve(false));
+        return;
+      }
+
+      resolve(true);
+    });
+
+    server.listen(GLOBAL_INSTANCE_PORT, '127.0.0.1', () => {
+      globalInstanceServer = server;
+      resolve(true);
+    });
+  });
+}
+
+function sendRelaunchRequestToExistingInstance(): Promise<void> {
+  return new Promise((resolve) => {
+    const socket = new Socket();
+    const done = () => {
+      socket.destroy();
+      resolve();
+    };
+
+    socket.once('error', done);
+    socket.connect(GLOBAL_INSTANCE_PORT, '127.0.0.1', () => {
+      socket.end('relaunch-request', done);
+    });
+  });
 }
 
 function showCountdownWindow(): void {
@@ -232,7 +332,7 @@ function updateTray(snapshot: AppSnapshot): void {
   }
 
   const pauseLabel = snapshot.status === 'paused' && snapshot.pauseUntilIso
-    ? `已暂停到 ${formatTime(new Date(snapshot.pauseUntilIso))}`
+    ? `继续提醒（原暂停到 ${formatTime(new Date(snapshot.pauseUntilIso))}）`
     : '暂停 1 小时';
   const todayLabel = snapshot.mutedToday ? '今日已停止提醒' : '今日不再提醒';
 
@@ -241,10 +341,10 @@ function updateTray(snapshot: AppSnapshot): void {
     Menu.buildFromTemplate([
       { label: '打开主界面', click: showMainWindow },
       { type: 'separator' },
-      { label: snapshot.workdayStatus === 'off-work' ? '继续提醒' : '我已上班', enabled: snapshot.workdayStatus !== 'working', click: () => controller.startWorkday() },
-      { label: '我已下班', enabled: snapshot.workdayStatus === 'working', click: () => controller.endWorkday() },
+      { label: snapshot.daySession.status === 'off-work' ? '继续提醒' : '我已上班', enabled: snapshot.daySession.status !== 'working', click: () => controller.startWorkday() },
+      { label: '我已下班', enabled: snapshot.daySession.status === 'working', click: () => controller.endWorkday() },
       { type: 'separator' },
-      { label: pauseLabel, enabled: snapshot.status !== 'paused', click: () => controller.pauseForHour() },
+      { label: pauseLabel, click: () => snapshot.status === 'paused' ? controller.resumeReminders() : controller.pauseForHour() },
       { label: todayLabel, enabled: !snapshot.mutedToday, click: () => controller.muteToday() },
       { type: 'separator' },
       {
@@ -276,9 +376,37 @@ function showNotification(): void {
 
   new Notification({
     title: '该起身了',
-    body: '连续工作已到设定时间。',
+    body: settings.restPromptText,
     silent: !settings.soundEnabled
   }).show();
+}
+
+async function confirmWorkdayStart(): Promise<boolean> {
+  if (Notification.isSupported()) {
+    new Notification({
+      title: '今天上班吗？',
+      body: '确认后开始今天的久坐提醒。',
+      silent: !settingsStore.get().soundEnabled
+    }).show();
+  }
+
+  showMainWindow();
+  const result = await showMessageBox({
+    type: 'question',
+    title: '上班确认',
+    message: '现在是否已经开始上班？',
+    detail: '确认后 SitLess 会开始今天的提醒；取消后今天不会重复弹出这个确认。',
+    buttons: ['我已上班', '今天先不提醒'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true
+  });
+
+  return result.response === 0;
+}
+
+function showMessageBox(options: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
+  return mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options);
 }
 
 async function maybeAskStartupPreference(): Promise<void> {
@@ -375,9 +503,11 @@ ipcMain.handle('image:reset', () => {
 
 ipcMain.handle('reminder:test', () => controller.testReminderFlow());
 ipcMain.handle('reminder:pause-hour', () => controller.pauseForHour());
+ipcMain.handle('reminder:resume', () => controller.resumeReminders());
 ipcMain.handle('reminder:mute-today', () => controller.muteToday());
 ipcMain.handle('workday:start', () => controller.startWorkday());
 ipcMain.handle('workday:end', () => controller.endWorkday());
+ipcMain.handle('records:update', (_event, correction: DailyRecordCorrection) => controller.updateDailyRecord(correction));
 
 ipcMain.on('countdown:action', (_event, action: CountdownAction) => {
   controller.handleCountdownAction(action);

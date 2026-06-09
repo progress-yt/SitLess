@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import { join } from 'node:path';
-import { createDefaultSettings } from '../shared/defaults';
+import { DEFAULT_REST_PROMPT_OPTIONS, createDefaultSettings } from '../shared/defaults';
 import type { AppSettings } from '../shared/types';
 import { clampNumber } from '../shared/schedule';
 import { readJsonFile, writeJsonFile } from './jsonStore';
@@ -77,7 +77,8 @@ function normalizeSettings(value: AppSettings): AppSettings {
     soundEnabled: Boolean(merged.soundEnabled),
     launchAtStartup: Boolean(merged.launchAtStartup),
     hasSeenStartupPrompt: Boolean(merged.hasSeenStartupPrompt),
-    customReminderImagePath: merged.customReminderImagePath || null
+    customReminderImagePath: merged.customReminderImagePath || null,
+    restPromptText: normalizeRestPromptText(merged.restPromptText)
   };
 }
 
@@ -89,4 +90,13 @@ function cloneSettings(settings: AppSettings): AppSettings {
       lunch: { ...settings.workSchedule.lunch }
     }
   };
+}
+
+function normalizeRestPromptText(value: string): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) {
+    return DEFAULT_REST_PROMPT_OPTIONS[0];
+  }
+
+  return normalized.slice(0, 36);
 }
