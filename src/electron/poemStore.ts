@@ -22,6 +22,11 @@ interface JinrishiciSentenceResponse {
   };
 }
 
+interface JinrishiciTokenResponse {
+  status?: string;
+  data?: string;
+}
+
 export class PoemStore {
   private readonly filePath: string;
   private state: PoemFile;
@@ -79,7 +84,8 @@ export class PoemStore {
       throw new Error(`Token request failed with HTTP ${response.status}`);
     }
 
-    const token = (await response.text()).trim();
+    const json = await response.json() as JinrishiciTokenResponse;
+    const token = json.data?.trim();
     if (!token) {
       throw new Error('Token request returned an empty token');
     }
@@ -123,14 +129,19 @@ async function fetchDailyPoem(token: string, dateKey: string): Promise<DailyPoem
   };
 }
 
-function normalizePoemFile(value: Partial<PoemFile>): PoemFile {
+function normalizePoemFile(value: unknown): PoemFile {
+  const object = isRecord(value) ? value : {};
   return {
-    token: typeof value.token === 'string' ? value.token : null,
-    poem: value.poem ? normalizePoem(value.poem) : null
+    token: typeof object.token === 'string' ? object.token : null,
+    poem: object.poem ? normalizePoem(object.poem) : null
   };
 }
 
-function normalizePoem(value: Partial<DailyPoem>): DailyPoem | null {
+function normalizePoem(value: unknown): DailyPoem | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
   if (typeof value.dateKey !== 'string' || typeof value.content !== 'string') {
     return null;
   }
@@ -142,4 +153,8 @@ function normalizePoem(value: Partial<DailyPoem>): DailyPoem | null {
     title: typeof value.title === 'string' ? value.title : null,
     source: value.source === 'jinrishici' || value.source === 'cache' || value.source === 'fallback' ? value.source : 'fallback'
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

@@ -51,17 +51,20 @@ export class SettingsStore {
   }
 }
 
-function normalizeSettings(value: AppSettings): AppSettings {
+function normalizeSettings(value: unknown): AppSettings {
   const defaults = createDefaultSettings();
+  const object = isRecord(value) ? value : {};
+  const workSchedule = isRecord(object.workSchedule) ? object.workSchedule : {};
+  const lunch = isRecord(workSchedule.lunch) ? workSchedule.lunch : {};
   const merged: AppSettings = {
     ...defaults,
-    ...value,
+    ...object,
     workSchedule: {
       ...defaults.workSchedule,
-      ...value.workSchedule,
+      ...workSchedule,
       lunch: {
         ...defaults.workSchedule.lunch,
-        ...value.workSchedule?.lunch
+        ...lunch
       }
     }
   };
@@ -69,15 +72,24 @@ function normalizeSettings(value: AppSettings): AppSettings {
   return {
     ...merged,
     mode: merged.mode === 'fixed' ? 'fixed' : 'active',
-    activeThresholdMinutes: clampNumber(merged.activeThresholdMinutes, 1, 240),
-    fixedIntervalMinutes: clampNumber(merged.fixedIntervalMinutes, 1, 240),
-    idleResetMinutes: clampNumber(merged.idleResetMinutes, 1, 60),
-    snoozeMinutes: clampNumber(merged.snoozeMinutes, 1, 240),
-    countdownSeconds: clampNumber(merged.countdownSeconds, 3, 120),
+    workSchedule: {
+      start: normalizeTimeString(merged.workSchedule.start, defaults.workSchedule.start),
+      end: normalizeTimeString(merged.workSchedule.end, defaults.workSchedule.end),
+      lunch: {
+        enabled: Boolean(merged.workSchedule.lunch.enabled),
+        start: normalizeTimeString(merged.workSchedule.lunch.start, defaults.workSchedule.lunch.start),
+        end: normalizeTimeString(merged.workSchedule.lunch.end, defaults.workSchedule.lunch.end)
+      }
+    },
+    activeThresholdMinutes: clampNumber(Number(merged.activeThresholdMinutes), 1, 240),
+    fixedIntervalMinutes: clampNumber(Number(merged.fixedIntervalMinutes), 1, 240),
+    idleResetMinutes: clampNumber(Number(merged.idleResetMinutes), 1, 60),
+    snoozeMinutes: clampNumber(Number(merged.snoozeMinutes), 1, 240),
+    countdownSeconds: clampNumber(Number(merged.countdownSeconds), 3, 120),
     soundEnabled: Boolean(merged.soundEnabled),
     launchAtStartup: Boolean(merged.launchAtStartup),
     hasSeenStartupPrompt: Boolean(merged.hasSeenStartupPrompt),
-    customReminderImagePath: merged.customReminderImagePath || null,
+    customReminderImagePath: typeof merged.customReminderImagePath === 'string' && merged.customReminderImagePath ? merged.customReminderImagePath : null,
     restPromptText: normalizeRestPromptText(merged.restPromptText)
   };
 }
@@ -92,11 +104,34 @@ function cloneSettings(settings: AppSettings): AppSettings {
   };
 }
 
-function normalizeRestPromptText(value: string): string {
+function normalizeRestPromptText(value: unknown): string {
   const normalized = typeof value === 'string' ? value.trim() : '';
   if (!normalized) {
     return DEFAULT_REST_PROMPT_OPTIONS[0];
   }
 
   return normalized.slice(0, 36);
+}
+
+function normalizeTimeString(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) {
+    return fallback;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return fallback;
+  }
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

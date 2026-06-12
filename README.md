@@ -1,42 +1,69 @@
 # SitLess
 
-Windows desktop sedentary reminder app.
+SitLess 是一款 Windows 桌面端久坐提醒工具。应用常驻系统托盘，在工作日和用户配置的工作时间内运行，支持午休排除、上班确认、加班自动下班、提醒统计和自定义全屏提醒图片。
 
-## Development
+## 主要功能
 
-Install dependencies:
+- 按用户配置的上班、下班和午休时间控制提醒。
+- 支持“连续活跃”和“固定间隔”两种提醒模式。
+- 到点后先显示系统通知和倒计时小窗，未处理时进入全屏休息提醒。
+- 支持“开始休息”“稍后提醒”“跳过本次”和“今日不再提醒”。
+- 下班后如果仍有键鼠活动，默认视为加班；超过下班时间后长时间无输入，会按最后活跃时间记录实际下班时间。
+- 每日统计提醒次数、完成休息次数和跳过次数，并保存在本地 JSON 文件。
+- 今日诗词优先使用今日诗词接口，接口不可用时使用本地兜底内容。
+
+## 提醒模式
+
+### 连续活跃
+
+连续活跃模式会根据键盘和鼠标输入判断用户是否持续使用电脑。持续活跃达到配置的阈值后触发提醒；如果无输入时间超过“无输入重置”配置，本轮计时会重新开始。选择该模式时，设置页只显示“连续活跃阈值”和“无输入重置”这类与当前模式相关的配置。
+
+适合希望提醒更贴近真实使用状态的用户。
+
+### 固定间隔
+
+固定间隔模式从开始工作或上次处理提醒后开始计时，每隔配置的分钟数触发一次提醒。短暂空闲不会重置固定间隔。选择该模式时，设置页只显示“固定间隔”配置，不混入连续活跃模式的配置项。
+
+适合希望提醒节奏稳定、规则简单的用户。
+
+切换提醒模式后，当前提醒周期会重新开始，避免沿用旧模式的累计时间导致刚切换就触发提醒。
+
+## 开发
+
+安装依赖：
 
 ```powershell
 npm install
 ```
 
-Preview the React renderer:
+预览 React 渲染层：
 
 ```powershell
 npm run dev:renderer
 ```
 
-Run the Electron desktop app against the built renderer:
+构建并启动 Electron 桌面应用：
 
 ```powershell
 npm start
 ```
 
-For Electron dev with Vite, run these in two terminals:
+如果需要用 Vite 开发服务运行 Electron，请分别在两个终端执行：
 
 ```powershell
 npm run dev:renderer
 npm run dev:electron
 ```
 
-## Verification
+## 验证
 
 ```powershell
 npm test
 npm run build
+npm run smoke:electron
 ```
 
-## Packaging
+## 打包
 
 ```powershell
 npm run dist

@@ -72,10 +72,11 @@ export class RuntimeStateStore {
   }
 }
 
-function normalizeRuntimeState(value: Partial<ReminderRuntimeState>): ReminderRuntimeState {
+function normalizeRuntimeState(value: unknown): ReminderRuntimeState {
+  const object = isRecord(value) ? value : {};
   return {
-    pauseUntilIso: typeof value.pauseUntilIso === 'string' ? value.pauseUntilIso : null,
-    mutedDateKey: typeof value.mutedDateKey === 'string' ? value.mutedDateKey : null
+    pauseUntilIso: typeof object.pauseUntilIso === 'string' ? object.pauseUntilIso : null,
+    mutedDateKey: typeof object.mutedDateKey === 'string' ? object.mutedDateKey : null
   };
 }
 
@@ -86,4 +87,8 @@ function getActivePauseUntilIso(value: string | null, date: Date): string | null
 
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) && timestamp > date.getTime() ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

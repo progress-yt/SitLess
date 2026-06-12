@@ -82,6 +82,10 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - The app also supports fixed interval reminder mode as a user-selectable alternative.
 - Only one reminder mode is active at a time.
 - Both reminder modes are gated by the same schedule rules.
+- 设置页必须明确解释“连续活跃”和“固定间隔”的差异，并在用户切换模式后给出清晰反馈。
+- 设置页只展示当前提醒模式相关的模式配置；连续活跃模式展示活跃阈值和无输入重置，固定间隔模式展示固定间隔。
+- 稍后提醒、倒计时等两种模式通用的配置应与模式专属配置分组展示。
+- 切换提醒模式后，当前提醒周期重新开始，避免旧模式累计时间导致新模式立即触发提醒。
 - Schedule rules for v1 are Monday-Friday only, with weekends disabled.
 - Monday-Friday use one shared work-time range.
 - Default work time is 09:00-18:00.
@@ -93,12 +97,17 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - If there is no keyboard or mouse input for more than 5 minutes, the active-use timer resets.
 - The continuous active-use reminder threshold defaults to 45 minutes.
 - The fixed interval reminder defaults to 45 minutes.
+- 上班确认提示只在有效工作时段内自动弹出，不在午休、下班后或周末自动打扰用户。
+- 超过配置下班时间后，如果用户仍有键鼠活动，则视为加班并继续提醒。
+- 加班期间如果无输入超过“无输入重置”配置，应用自动结束当天工作；记录的下班时间取配置下班时间和最后活跃时间中更晚的一个。
+- 如果倒计时或全屏提醒正在显示，加班自动下班不会直接关闭当前提醒，避免提醒状态突然消失。
 - Snooze defaults to 10 minutes.
 - Reminder escalation flow is: system notification -> topmost countdown window -> primary-display fullscreen image.
 - Notification and countdown use a light sound by default.
 - Sound can be disabled in settings.
 - Countdown duration defaults to 10 seconds.
 - Countdown actions are “开始休息”, “稍后提醒”, and “跳过本次”.
+- 倒计时小窗需要为底部操作按钮保留明显且稳定的下边距，避免按钮贴近窗口底部。
 - “开始休息” immediately opens fullscreen reminder mode.
 - “稍后提醒” delays the reminder by the configured snooze duration.
 - “跳过本次” increments today’s skip count and restarts the reminder cycle.

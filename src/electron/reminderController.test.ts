@@ -3,19 +3,53 @@ import { createDefaultSettings, createEmptyDailyStats, createEmptyDaySession, cr
 import { getDateKey } from '../shared/schedule';
 import { createStatsOverview, type DailyStatsFile } from '../shared/stats';
 import type { DailyStats, DaySession, ReminderRuntimeState } from '../shared/types';
-import { ReminderController, shouldPromptWorkdayStart } from './reminderController';
+import { ReminderController, getOvertimeEndDate, shouldPromptWorkdayStart } from './reminderController';
 
 describe('workday start prompt schedule', () => {
-  it('does not prompt before 08:30 on a weekday', () => {
-    expect(shouldPromptWorkdayStart(new Date('2026-06-05T08:29:00'))).toBe(false);
+  it('does not prompt before the configured work start on a weekday', () => {
+    const settings = createDefaultSettings();
+    settings.workSchedule.start = '10:00';
+
+    expect(shouldPromptWorkdayStart(new Date('2026-06-05T09:59:00'), settings)).toBe(false);
   });
 
-  it('prompts from 08:30 on a weekday', () => {
-    expect(shouldPromptWorkdayStart(new Date('2026-06-05T08:30:00'))).toBe(true);
+  it('prompts from the configured work start on a weekday', () => {
+    const settings = createDefaultSettings();
+    settings.workSchedule.start = '10:00';
+
+    expect(shouldPromptWorkdayStart(new Date('2026-06-05T10:00:00'), settings)).toBe(true);
+  });
+
+  it('does not prompt during lunch break', () => {
+    const settings = createDefaultSettings();
+
+    expect(shouldPromptWorkdayStart(new Date('2026-06-05T12:30:00'), settings)).toBe(false);
+  });
+
+  it('does not prompt after the configured work end', () => {
+    const settings = createDefaultSettings();
+
+    expect(shouldPromptWorkdayStart(new Date('2026-06-05T18:30:00'), settings)).toBe(false);
   });
 
   it('does not prompt on weekends', () => {
-    expect(shouldPromptWorkdayStart(new Date('2026-06-06T09:00:00'))).toBe(false);
+    expect(shouldPromptWorkdayStart(new Date('2026-06-06T10:00:00'), createDefaultSettings())).toBe(false);
+  });
+});
+
+describe('overtime end time', () => {
+  it('uses the last active time after the configured end time', () => {
+    const settings = createDefaultSettings();
+    const endedAt = getOvertimeEndDate(new Date('2026-06-05T19:30:00'), settings, 10 * 60);
+
+    expect(endedAt.toISOString()).toBe(new Date('2026-06-05T19:20:00').toISOString());
+  });
+
+  it('does not record an overtime end before the configured end time', () => {
+    const settings = createDefaultSettings();
+    const endedAt = getOvertimeEndDate(new Date('2026-06-05T18:30:00'), settings, 2 * 60 * 60);
+
+    expect(endedAt.toISOString()).toBe(new Date('2026-06-05T18:00:00').toISOString());
   });
 });
 
@@ -50,6 +84,44 @@ describe('reminder pause flow', () => {
   });
 });
 
+describe('reminder mode changes', () => {
+  it('restarts the current cycle when switching modes', () => {
+    const stores = createControllerStores();
+    stores.settings.mode = 'active';
+    stores.settings.fixedIntervalMinutes = 45;
+    let openedCountdown = 0;
+    const controller = new ReminderController(
+      stores.settingsStore,
+      stores.statsStore,
+      stores.daySessionStore,
+      stores.runtimeStateStore,
+      stores.poemStore,
+      {
+        getIdleSeconds: () => 0,
+        showNotification: () => undefined,
+        confirmWorkdayStart: async () => true,
+        openCountdown: () => {
+          openedCountdown += 1;
+        },
+        closeCountdown: () => undefined,
+        openFullscreen: () => undefined,
+        closeFullscreen: () => undefined
+      }
+    );
+
+    controller.refresh();
+    (controller as unknown as { cycleStartedAt: number | null }).cycleStartedAt = Date.now() - 46 * 60 * 1000;
+
+    const previous = { ...stores.settings };
+    stores.settings.mode = 'fixed';
+    const snapshot = controller.handleSettingsChange(previous, stores.settings);
+
+    expect(snapshot.status).toBe('counting');
+    expect(snapshot.remainingSeconds ?? 0).toBeGreaterThan(44 * 60);
+    expect(openedCountdown).toBe(0);
+  });
+});
+
 function createControllerStores() {
   const settings = createDefaultSettings();
   const stats: DailyStatsFile = {};
@@ -61,6 +133,7 @@ function createControllerStores() {
   };
 
   return {
+    settings,
     settingsStore: {
       get: () => settings
     },

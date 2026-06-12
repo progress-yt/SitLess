@@ -187,14 +187,14 @@ function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
         <div className="panel-heading">
           <div>
             <span>提醒进度</span>
-            <h3>{snapshot.settings.mode === 'active' ? '连续活跃模式' : '固定间隔模式'}</h3>
+            <h3>{getModeTitle(snapshot.settings.mode)}模式</h3>
           </div>
           <Clock3 size={20} />
         </div>
 
         <div className="timer-display">
           <strong>{getRemainingLabel(snapshot)}</strong>
-          <span>{snapshot.settings.mode === 'active' ? '键鼠无输入超过 5 分钟会重新计时' : '按固定间隔触发提醒'}</span>
+          <span>{getModeSummary(snapshot.settings)}</span>
         </div>
 
         <div className="progress-track" aria-label="提醒进度">
@@ -259,6 +259,16 @@ function RecordsView({ snapshot }: { snapshot: AppSnapshot }) {
 
 function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
   const settings = snapshot.settings;
+  const [modeFeedback, setModeFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!modeFeedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setModeFeedback(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [modeFeedback]);
 
   const save = (next: AppSettings) => {
     sitlessApi.updateSettings(next);
@@ -291,6 +301,15 @@ function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
     });
   };
 
+  const selectMode = (mode: ReminderMode) => {
+    if (mode === settings.mode) {
+      return;
+    }
+
+    update({ mode });
+    setModeFeedback(`已切换为${getModeTitle(mode)}模式，本轮计时已重新开始`);
+  };
+
   return (
     <div className="settings-layout">
       <section className="workspace-panel">
@@ -302,36 +321,64 @@ function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
           <Bell size={20} />
         </div>
 
-        <div className="segmented-control wide" role="group" aria-label="提醒模式">
-          <ModeButton mode="active" current={settings.mode} onSelect={(mode) => update({ mode })} />
-          <ModeButton mode="fixed" current={settings.mode} onSelect={(mode) => update({ mode })} />
+        <div className="mode-selector" role="group" aria-label="提醒模式">
+          <ModeButton mode="active" current={settings.mode} settings={settings} onSelect={selectMode} />
+          <ModeButton mode="fixed" current={settings.mode} settings={settings} onSelect={selectMode} />
         </div>
 
-        <div className="settings-grid two">
-          <NumberField
-            label="连续活跃阈值"
-            suffix="分钟"
-            min={1}
-            max={240}
-            value={settings.activeThresholdMinutes}
-            onChange={(value) => update({ activeThresholdMinutes: value })}
-          />
-          <NumberField
-            label="固定间隔"
-            suffix="分钟"
-            min={1}
-            max={240}
-            value={settings.fixedIntervalMinutes}
-            onChange={(value) => update({ fixedIntervalMinutes: value })}
-          />
-          <NumberField
-            label="无输入重置"
-            suffix="分钟"
-            min={1}
-            max={60}
-            value={settings.idleResetMinutes}
-            onChange={(value) => update({ idleResetMinutes: value })}
-          />
+        <div className="mode-summary">
+          <strong>当前：{getModeTitle(settings.mode)}模式</strong>
+          <span>{getModeSummary(settings)}</span>
+          <span>{getModeDetail(settings)}</span>
+          {modeFeedback ? <em>{modeFeedback}</em> : null}
+        </div>
+
+        <div className="mode-config-block">
+          <div className="mode-config-heading">
+            <strong>{getModeTitle(settings.mode)}配置</strong>
+            <span>{settings.mode === 'active' ? '只调整连续活跃模式会用到的计时条件。' : '只调整固定间隔模式会用到的提醒节奏。'}</span>
+          </div>
+
+          <div className="settings-grid two">
+            {settings.mode === 'active' ? (
+              <>
+                <NumberField
+                  label="连续活跃阈值"
+                  suffix="分钟"
+                  min={1}
+                  max={240}
+                  value={settings.activeThresholdMinutes}
+                  onChange={(value) => update({ activeThresholdMinutes: value })}
+                />
+                <NumberField
+                  label="无输入重置"
+                  suffix="分钟"
+                  min={1}
+                  max={60}
+                  value={settings.idleResetMinutes}
+                  onChange={(value) => update({ idleResetMinutes: value })}
+                />
+              </>
+            ) : (
+              <NumberField
+                label="固定间隔"
+                suffix="分钟"
+                min={1}
+                max={240}
+                value={settings.fixedIntervalMinutes}
+                onChange={(value) => update({ fixedIntervalMinutes: value })}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="mode-config-block">
+          <div className="mode-config-heading">
+            <strong>通用提醒配置</strong>
+            <span>两种模式都会使用这些提醒处理规则。</span>
+          </div>
+
+          <div className="settings-grid two">
           <NumberField
             label="稍后提醒"
             suffix="分钟"
@@ -348,6 +395,7 @@ function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
             value={settings.countdownSeconds}
             onChange={(value) => update({ countdownSeconds: value })}
           />
+          </div>
         </div>
       </section>
 
@@ -531,16 +579,23 @@ function FullscreenView({ snapshot }: { snapshot: AppSnapshot }) {
 function ModeButton({
   mode,
   current,
+  settings,
   onSelect
 }: {
   mode: ReminderMode;
   current: ReminderMode;
+  settings: AppSettings;
   onSelect: (mode: ReminderMode) => void;
 }) {
+  const isActive = mode === current;
+
   return (
-    <button type="button" className={mode === current ? 'active' : ''} onClick={() => onSelect(mode)}>
+    <button type="button" className={isActive ? 'active' : ''} aria-pressed={isActive} onClick={() => onSelect(mode)}>
       {mode === 'active' ? <TimerReset size={16} /> : <Clock3 size={16} />}
-      {mode === 'active' ? '连续活跃' : '固定间隔'}
+      <span>
+        <strong>{getModeTitle(mode)}</strong>
+        <small>{getModeOptionDescription(mode, settings)}</small>
+      </span>
     </button>
   );
 }
@@ -847,6 +902,34 @@ function getProgress(snapshot: AppSnapshot): number {
   }
 
   return Math.max(0, Math.min(100, ((threshold - snapshot.remainingSeconds) / threshold) * 100));
+}
+
+function getModeTitle(mode: ReminderMode): string {
+  return mode === 'active' ? '连续活跃' : '固定间隔';
+}
+
+function getModeSummary(settings: AppSettings): string {
+  if (settings.mode === 'active') {
+    return `持续检测键盘和鼠标输入，连续活跃 ${settings.activeThresholdMinutes} 分钟后触发提醒。`;
+  }
+
+  return `从开始工作或上次处理提醒后计时，每隔 ${settings.fixedIntervalMinutes} 分钟触发一次提醒。`;
+}
+
+function getModeDetail(settings: AppSettings): string {
+  if (settings.mode === 'active') {
+    return `如果中途无输入超过 ${settings.idleResetMinutes} 分钟，系统会认为你离开了电脑，本轮久坐计时重新开始。适合想按真实电脑使用状态提醒的场景。`;
+  }
+
+  return '固定间隔不根据短暂空闲重置计时，提醒节奏更稳定。适合希望按固定节奏起身，或不想让键鼠检测影响提醒时间的场景。';
+}
+
+function getModeOptionDescription(mode: ReminderMode, settings: AppSettings): string {
+  if (mode === 'active') {
+    return `按键鼠活跃判断，离开电脑会重置`;
+  }
+
+  return `按固定分钟数提醒，不受短暂空闲影响`;
 }
 
 function formatDuration(totalSeconds: number): string {

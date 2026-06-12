@@ -14,7 +14,7 @@ export class StatsStore {
 
   constructor() {
     this.filePath = join(app.getPath('userData'), 'stats.json');
-    this.stats = readJsonFile(this.filePath, {});
+    this.stats = normalizeStatsFile(readJsonFile(this.filePath, {}));
   }
 
   getToday(date = new Date()): DailyStats {
@@ -73,6 +73,25 @@ function normalizeCount(value: number): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
+function normalizeStatsFile(value: unknown): DailyStatsFile {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return Object.entries(value).reduce<DailyStatsFile>((records, [dateKey, stats]) => {
+    if (!isRecord(stats)) {
+      return records;
+    }
+
+    records[dateKey] = {
+      reminders: normalizeCount(Number(stats.reminders)),
+      completed: normalizeCount(Number(stats.completed)),
+      skipped: normalizeCount(Number(stats.skipped))
+    };
+    return records;
+  }, {});
+}
+
 function getRecentDateKeys(limit: number, date: Date): string[] {
   const days = Math.max(1, Math.floor(limit));
   return Array.from({ length: days }, (_value, index) => {
@@ -80,4 +99,8 @@ function getRecentDateKeys(limit: number, date: Date): string[] {
     current.setDate(current.getDate() - index);
     return getDateKey(current);
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

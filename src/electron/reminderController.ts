@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { getScheduleStatus, secondsUntil } from '../shared/schedule';
+import { getScheduleStatus, parseTimeToMinutes, secondsUntil } from '../shared/schedule';
 import { evaluateReminderEngine } from '../shared/reminderEngine';
 import { getWorkdayGateStatus } from '../shared/workday';
 import type {
@@ -107,6 +107,20 @@ export class ReminderController extends EventEmitter {
 
   refresh(): void {
     this.tick();
+  }
+
+  handleSettingsChange(previous: AppSettings, next: AppSettings): AppSnapshot {
+    if (previous.mode !== next.mode) {
+      this.clearCountdownTimer();
+      this.deps.closeCountdown();
+      this.deps.closeFullscreen();
+      this.phase = 'running';
+      this.snoozeUntil = null;
+      this.resetCycle(new Date());
+    }
+
+    this.tick();
+    return this.snapshot;
   }
 
   bumpImageRevision(): void {
@@ -249,6 +263,10 @@ export class ReminderController extends EventEmitter {
     this.maybePromptWorkdayStart(now);
     this.refreshDailyPoemIfNeeded(now);
 
+    if (this.maybeEndOvertimeWorkday(now, settings, idleSeconds)) {
+      return;
+    }
+
     if (this.phase === 'countdown') {
       this.emitSnapshot(this.buildSnapshot(now, 'countdown', null, idleSeconds));
       return;
@@ -349,7 +367,8 @@ export class ReminderController extends EventEmitter {
       return;
     }
 
-    if (!shouldPromptWorkdayStart(now)) {
+    const settings = this.settingsStore.get();
+    if (!shouldPromptWorkdayStart(now, settings)) {
       return;
     }
 
@@ -432,6 +451,38 @@ export class ReminderController extends EventEmitter {
     this.emit('snapshot', snapshot);
   }
 
+  private maybeEndOvertimeWorkday(now: Date, settings: AppSettings, idleSeconds: number): boolean {
+    const daySession = this.daySessionStore.getToday(now);
+    if (daySession.status !== 'working') {
+      return false;
+    }
+
+    if (this.phase === 'countdown' || this.phase === 'fullscreen') {
+      return false;
+    }
+
+    const schedule = getScheduleStatus(now, settings);
+    if (schedule.reason !== 'after-work') {
+      return false;
+    }
+
+    if (idleSeconds < settings.idleResetMinutes * 60) {
+      return false;
+    }
+
+    this.clearCountdownTimer();
+    this.deps.closeCountdown();
+    this.deps.closeFullscreen();
+    this.phase = 'running';
+    this.snoozeUntil = null;
+
+    const endedAt = getOvertimeEndDate(now, settings, idleSeconds);
+    this.daySessionStore.end(endedAt);
+    this.resetCycle(now);
+    this.emitSnapshot(this.buildSnapshot(now, 'off-work', null, idleSeconds));
+    return true;
+  }
+
   private buildDailyRecords(now: Date): DailyDetailRecord[] {
     const limit = 30;
     const statsByDay = this.statsStore.getRecentDays(limit, now);
@@ -462,14 +513,14 @@ export class ReminderController extends EventEmitter {
   }
 }
 
-export function shouldPromptWorkdayStart(date: Date): boolean {
-  const day = date.getDay();
-  if (day === 0 || day === 6) {
-    return false;
-  }
+export function shouldPromptWorkdayStart(date: Date, settings: AppSettings): boolean {
+  return getScheduleStatus(date, settings).reason === 'weekday';
+}
 
-  const minutes = date.getHours() * 60 + date.getMinutes();
-  return minutes >= 8 * 60 + 30;
+export function getOvertimeEndDate(date: Date, settings: AppSettings, idleSeconds: number): Date {
+  const lastActiveAt = new Date(date.getTime() - Math.max(0, idleSeconds) * 1000);
+  const scheduledEndAt = getScheduledWorkEndDate(date, settings);
+  return lastActiveAt.getTime() > scheduledEndAt.getTime() ? lastActiveAt : scheduledEndAt;
 }
 
 function localDateKey(date: Date): string {
@@ -477,6 +528,26 @@ function localDateKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function getScheduledWorkEndDate(date: Date, settings: AppSettings): Date {
+  const startMinutes = parseTimeToMinutes(settings.workSchedule.start);
+  const endMinutes = parseTimeToMinutes(settings.workSchedule.end);
+  const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, endMinutes, 0, 0);
+
+  if (endMinutes <= startMinutes && parseTimeToMinutes(formatTime(date)) < startMinutes) {
+    return endDate;
+  }
+
+  if (endMinutes <= startMinutes) {
+    endDate.setDate(endDate.getDate() + 1);
+  }
+
+  return endDate;
+}
+
+function formatTime(date: Date): string {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 function getRecentDateKeys(limit: number, date: Date): string[] {

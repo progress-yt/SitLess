@@ -14,7 +14,6 @@ import {
   Tray
 } from 'electron';
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
-import { createServer, Socket, type Server } from 'node:net';
 import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SettingsStore } from './settingsStore';
@@ -49,10 +48,7 @@ let runtimeStateStore: RuntimeStateStore;
 let poemStore: PoemStore;
 let controller: ReminderController;
 let isQuitting = false;
-let globalInstanceServer: Server | null = null;
 let pendingRelaunchPrompt = false;
-
-const GLOBAL_INSTANCE_PORT = 38373;
 
 if (process.env.SITLESS_USER_DATA_DIR) {
   app.setPath('userData', process.env.SITLESS_USER_DATA_DIR);
@@ -71,12 +67,6 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(async () => {
-  const hasGlobalInstanceLock = await ensureGlobalInstanceLock();
-  if (!hasGlobalInstanceLock) {
-    app.quit();
-    return;
-  }
-
   settingsStore = new SettingsStore();
   statsStore = new StatsStore();
   daySessionStore = new DaySessionStore();
@@ -118,7 +108,6 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   isQuitting = true;
   controller?.stop();
-  globalInstanceServer?.close();
 });
 
 app.on('window-all-closed', () => undefined);
@@ -190,58 +179,12 @@ async function promptRelaunchExistingInstance(): Promise<void> {
   app.exit(0);
 }
 
-async function ensureGlobalInstanceLock(): Promise<boolean> {
-  if (process.env.SITLESS_SKIP_GLOBAL_INSTANCE_LOCK === '1') {
-    return true;
-  }
-
-  return new Promise((resolve) => {
-    const server = createServer((socket) => {
-      socket.setEncoding('utf8');
-      socket.on('data', (message) => {
-        if (message.includes('relaunch-request')) {
-          void promptRelaunchExistingInstance();
-        }
-      });
-    });
-
-    server.once('error', (error: NodeJS.ErrnoException) => {
-      if (error.code === 'EADDRINUSE') {
-        sendRelaunchRequestToExistingInstance().finally(() => resolve(false));
-        return;
-      }
-
-      resolve(true);
-    });
-
-    server.listen(GLOBAL_INSTANCE_PORT, '127.0.0.1', () => {
-      globalInstanceServer = server;
-      resolve(true);
-    });
-  });
-}
-
-function sendRelaunchRequestToExistingInstance(): Promise<void> {
-  return new Promise((resolve) => {
-    const socket = new Socket();
-    const done = () => {
-      socket.destroy();
-      resolve();
-    };
-
-    socket.once('error', done);
-    socket.connect(GLOBAL_INSTANCE_PORT, '127.0.0.1', () => {
-      socket.end('relaunch-request', done);
-    });
-  });
-}
-
 function showCountdownWindow(): void {
   closeCountdownWindow();
 
   countdownWindow = new BrowserWindow({
-    width: 420,
-    height: 246,
+    width: 436,
+    height: 318,
     resizable: false,
     maximizable: false,
     minimizable: false,
@@ -456,9 +399,10 @@ function getCurrentReminderImagePath(): string {
 ipcMain.handle('snapshot:get', () => controller.getSnapshot());
 
 ipcMain.handle('settings:update', (_event, settings: AppSettings) => {
+  const previous = settingsStore.get();
   const next = settingsStore.update(settings);
   applyStartupSetting(next);
-  controller.refresh();
+  controller.handleSettingsChange(previous, next);
   return next;
 });
 

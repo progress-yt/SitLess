@@ -85,15 +85,16 @@ export class DaySessionStore {
   }
 }
 
-function normalizeDaySession(value: Partial<DaySession> | undefined): DaySession {
+function normalizeDaySession(value: unknown): DaySession {
   const empty = createEmptyDaySession();
+  const object = isRecord(value) ? value : {};
   return {
     ...empty,
-    ...value,
-    status: value?.status === 'working' || value?.status === 'off-work' ? value.status : 'not-started',
-    startedAtIso: value?.startedAtIso ?? null,
-    endedAtIso: value?.endedAtIso ?? null,
-    startPromptedAtIso: value?.startPromptedAtIso ?? null
+    ...object,
+    status: object.status === 'working' || object.status === 'off-work' ? object.status : 'not-started',
+    startedAtIso: typeof object.startedAtIso === 'string' ? object.startedAtIso : null,
+    endedAtIso: typeof object.endedAtIso === 'string' ? object.endedAtIso : null,
+    startPromptedAtIso: typeof object.startPromptedAtIso === 'string' ? object.startPromptedAtIso : null
   };
 }
 
@@ -104,4 +105,8 @@ function getRecentDateKeys(limit: number, date: Date): string[] {
     current.setDate(current.getDate() - index);
     return getDateKey(current);
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

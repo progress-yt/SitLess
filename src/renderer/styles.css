@@ -181,6 +181,106 @@ input[type="checkbox"] {
   flex: 1;
 }
 
+.mode-selector {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mode-selector button {
+  justify-content: flex-start;
+  min-height: 84px;
+  padding: 12px 14px;
+  border-color: rgba(38, 37, 32, 0.14);
+  background: rgba(255, 255, 255, 0.64);
+  text-align: left;
+}
+
+.mode-selector button.active {
+  color: #ffffff;
+  border-color: #2f8278;
+  background: #2f8278;
+  box-shadow: 0 10px 26px rgba(47, 130, 120, 0.18);
+}
+
+.mode-selector button span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.mode-selector button strong {
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.mode-selector button small {
+  color: #6d6a61;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mode-selector button.active small {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.mode-summary {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(47, 130, 120, 0.16);
+  border-radius: 8px;
+  background: rgba(47, 130, 120, 0.06);
+}
+
+.mode-summary strong {
+  color: #24231f;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.mode-summary span {
+  color: #6d6a61;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mode-summary em {
+  color: #2f8278;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.mode-config-block {
+  display: grid;
+  gap: 12px;
+}
+
+.mode-config-block + .mode-config-block {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(38, 37, 32, 0.1);
+}
+
+.mode-config-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.mode-config-heading strong {
+  color: #24231f;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.mode-config-heading span {
+  color: #6d6a61;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .status-band {
   display: flex;
   align-items: center;
@@ -684,9 +784,9 @@ input[type="checkbox"] {
 .countdown-window {
   display: grid;
   height: 100vh;
-  padding: 22px;
-  grid-template-rows: auto 1fr auto auto;
-  gap: 14px;
+  padding: 24px 24px 46px;
+  grid-template-rows: auto minmax(84px, 1fr) 8px auto;
+  gap: 18px;
   color: #24231f;
   background: #f7f4ed;
 }
@@ -705,7 +805,7 @@ input[type="checkbox"] {
   justify-self: center;
   font-variant-numeric: tabular-nums;
   color: #24231f;
-  font-size: 78px;
+  font-size: 68px;
   font-weight: 780;
   line-height: 1;
 }
@@ -717,11 +817,13 @@ input[type="checkbox"] {
 .countdown-actions {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 9px;
+  gap: 10px;
+  padding-top: 4px;
 }
 
 .countdown-actions button {
   min-width: 0;
+  min-height: 42px;
   padding: 0 10px;
   white-space: nowrap;
 }
@@ -827,6 +929,10 @@ input[type="checkbox"] {
   }
 
   .countdown-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-selector {
     grid-template-columns: 1fr;
   }
 
