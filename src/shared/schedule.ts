@@ -49,9 +49,19 @@ export function getScheduleStatus(date: Date, settings: AppSettings): ScheduleSt
   const workEnd = parseTimeToMinutes(settings.workSchedule.end);
 
   if (!isInTimeRange(minutes, settings.workSchedule.start, settings.workSchedule.end)) {
+    if (workStart < workEnd) {
+      return {
+        within: false,
+        reason: minutes < workStart ? 'before-work' : 'after-work'
+      };
+    }
+
+    // Cross-midnight schedule: non-work gap is [workEnd, workStart).
+    // Split at the midpoint to distinguish "just ended" from "about to start".
+    const midpoint = Math.floor((workEnd + workStart) / 2);
     return {
       within: false,
-      reason: minutes < workStart || workStart > workEnd ? 'before-work' : 'after-work'
+      reason: minutes < midpoint ? 'after-work' : 'before-work'
     };
   }
 
@@ -73,4 +83,13 @@ export function clampNumber(value: number, min: number, max: number): number {
 
 export function secondsUntil(date: Date, timestamp: number): number {
   return Math.max(0, Math.ceil((timestamp - date.getTime()) / 1000));
+}
+
+export function getRecentDateKeys(limit: number, date: Date): string[] {
+  const days = Math.max(1, Math.floor(limit));
+  return Array.from({ length: days }, (_value, index) => {
+    const current = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    current.setDate(current.getDate() - index);
+    return getDateKey(current);
+  });
 }

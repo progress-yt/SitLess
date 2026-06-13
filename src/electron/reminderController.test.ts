@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultSettings, createEmptyDailyStats, createEmptyDaySession, createEmptyRuntimeState, createFallbackDailyPoem } from '../shared/defaults';
 import { getDateKey } from '../shared/schedule';
 import { createStatsOverview, type DailyStatsFile } from '../shared/stats';
@@ -53,7 +53,18 @@ describe('overtime end time', () => {
   });
 });
 
+// Pin time to a weekday within work hours so the schedule gate allows reminders.
+const FAKE_WEEKDAY = new Date('2026-06-10T10:00:00');
+
 describe('reminder pause flow', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FAKE_WEEKDAY);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('can resume reminders before a pause expires', () => {
     const stores = createControllerStores();
     const controller = new ReminderController(
@@ -85,6 +96,14 @@ describe('reminder pause flow', () => {
 });
 
 describe('reminder mode changes', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FAKE_WEEKDAY);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('restarts the current cycle when switching modes', () => {
     const stores = createControllerStores();
     stores.settings.mode = 'active';
@@ -121,6 +140,76 @@ describe('reminder mode changes', () => {
     expect(openedCountdown).toBe(0);
   });
 });
+
+describe('snapshot record cache', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FAKE_WEEKDAY);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('refreshes daily records after a same-day correction', () => {
+    const stores = createControllerStores();
+    const controller = createController(stores);
+    const dateKey = getDateKey(FAKE_WEEKDAY);
+
+    controller.refresh();
+    const snapshot = controller.updateDailyRecord({
+      dateKey,
+      workStatus: 'working',
+      workStartedAtIso: FAKE_WEEKDAY.toISOString(),
+      workEndedAtIso: null,
+      reminders: 3,
+      completed: 2,
+      skipped: 1
+    });
+
+    expect(snapshot.dailyRecords[0]).toMatchObject({
+      dateKey,
+      workStatus: 'working',
+      reminders: 3,
+      completed: 2,
+      skipped: 1
+    });
+  });
+
+  it('refreshes daily records and overview when the date changes', () => {
+    const stores = createControllerStores();
+    const controller = createController(stores);
+    const nextWeekday = new Date('2026-06-11T10:00:00');
+
+    controller.refresh();
+    expect(controller.getSnapshot().dailyRecords[0].dateKey).toBe(getDateKey(FAKE_WEEKDAY));
+
+    vi.setSystemTime(nextWeekday);
+    controller.refresh();
+
+    const snapshot = controller.getSnapshot();
+    expect(snapshot.dailyRecords[0].dateKey).toBe(getDateKey(nextWeekday));
+    expect(snapshot.statsOverview.day.startDateKey).toBe(getDateKey(nextWeekday));
+  });
+});
+
+function createController(stores: ReturnType<typeof createControllerStores>): ReminderController {
+  return new ReminderController(
+    stores.settingsStore,
+    stores.statsStore,
+    stores.daySessionStore,
+    stores.runtimeStateStore,
+    stores.poemStore,
+    {
+      getIdleSeconds: () => 0,
+      showNotification: () => undefined,
+      confirmWorkdayStart: async () => true,
+      openCountdown: () => undefined,
+      closeCountdown: () => undefined,
+      openFullscreen: () => undefined,
+      closeFullscreen: () => undefined
+    }
+  );
+}
 
 function createControllerStores() {
   const settings = createDefaultSettings();

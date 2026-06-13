@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { join } from 'node:path';
 import { createEmptyDaySession } from '../shared/defaults';
-import { getDateKey } from '../shared/schedule';
+import { getDateKey, getRecentDateKeys } from '../shared/schedule';
 import type { DaySession } from '../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 
@@ -14,6 +14,23 @@ export class DaySessionStore {
   constructor() {
     this.filePath = join(app.getPath('userData'), 'day-sessions.json');
     this.sessions = readJsonFile(this.filePath, {});
+    this.pruneOldEntries();
+  }
+
+  private pruneOldEntries(): void {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 90);
+    const cutoffKey = getDateKey(cutoff);
+    const keys = Object.keys(this.sessions);
+    const toRemove = keys.filter((key) => key < cutoffKey);
+    if (toRemove.length === 0) {
+      return;
+    }
+
+    for (const key of toRemove) {
+      delete this.sessions[key];
+    }
+    this.persist();
   }
 
   getToday(date = new Date()): DaySession {
@@ -98,14 +115,6 @@ function normalizeDaySession(value: unknown): DaySession {
   };
 }
 
-function getRecentDateKeys(limit: number, date: Date): string[] {
-  const days = Math.max(1, Math.floor(limit));
-  return Array.from({ length: days }, (_value, index) => {
-    const current = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    current.setDate(current.getDate() - index);
-    return getDateKey(current);
-  });
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 export function readJsonFile<T>(filePath: string, fallback: T): T {
@@ -15,5 +15,7 @@ export function readJsonFile<T>(filePath: string, fallback: T): T {
 
 export function writeJsonFile<T>(filePath: string, value: T): void {
   mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  const tempPath = `${filePath}.tmp`;
+  writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  renameSync(tempPath, filePath);
 }

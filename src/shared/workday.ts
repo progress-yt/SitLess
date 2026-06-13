@@ -19,6 +19,10 @@ export function getWorkdayGateStatus(date: Date, settings: AppSettings, daySessi
   }
 
   if (daySession.status !== 'working') {
+    // If work was never started and we're already past the end time, treat as outside-schedule
+    if (schedule.reason === 'after-work') {
+      return { canRunReminders: false, status: 'outside-schedule', schedule };
+    }
     return { canRunReminders: false, status: 'awaiting-work-start', schedule };
   }
 

@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { join } from 'node:path';
 import { createEmptyDailyStats } from '../shared/defaults';
-import { getDateKey } from '../shared/schedule';
+import { getDateKey, getRecentDateKeys } from '../shared/schedule';
 import { createStatsOverview, type DailyStatsFile } from '../shared/stats';
 import type { DailyStats, StatsOverview } from '../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
@@ -15,6 +15,7 @@ export class StatsStore {
   constructor() {
     this.filePath = join(app.getPath('userData'), 'stats.json');
     this.stats = normalizeStatsFile(readJsonFile(this.filePath, {}));
+    this.pruneOldEntries();
   }
 
   getToday(date = new Date()): DailyStats {
@@ -64,6 +65,24 @@ export class StatsStore {
     };
   }
 
+  private pruneOldEntries(): void {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 90);
+    const cutoffKey = getDateKey(cutoff);
+    let pruned = false;
+
+    for (const key of Object.keys(this.stats)) {
+      if (key < cutoffKey) {
+        delete this.stats[key];
+        pruned = true;
+      }
+    }
+
+    if (pruned) {
+      this.persist();
+    }
+  }
+
   private persist(): void {
     writeJsonFile(this.filePath, this.stats);
   }
@@ -92,14 +111,6 @@ function normalizeStatsFile(value: unknown): DailyStatsFile {
   }, {});
 }
 
-function getRecentDateKeys(limit: number, date: Date): string[] {
-  const days = Math.max(1, Math.floor(limit));
-  return Array.from({ length: days }, (_value, index) => {
-    const current = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    current.setDate(current.getDate() - index);
-    return getDateKey(current);
-  });
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;

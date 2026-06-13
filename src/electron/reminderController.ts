@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { getScheduleStatus, parseTimeToMinutes, secondsUntil } from '../shared/schedule';
+import { getDateKey, getRecentDateKeys, getScheduleStatus, parseTimeToMinutes, secondsUntil } from '../shared/schedule';
 import { evaluateReminderEngine } from '../shared/reminderEngine';
 import { getWorkdayGateStatus } from '../shared/workday';
 import type {
@@ -74,6 +74,10 @@ export class ReminderController extends EventEmitter {
   private imageRevision = 0;
   private lastPoemRefreshDateKey: string | null = null;
   private poemRefreshInFlight = false;
+  private cachedDailyRecords: DailyDetailRecord[] | null = null;
+  private cachedStatsOverview: StatsOverview | null = null;
+  private cachedRecordsDateKey: string | null = null;
+  private recordsCacheDirty = true;
 
   constructor(
     private readonly settingsStore: ReminderSettingsStore,
@@ -169,6 +173,7 @@ export class ReminderController extends EventEmitter {
   startWorkday(): AppSnapshot {
     this.daySessionStore.start();
     this.runtimeStateStore.clearMute();
+    this.invalidateRecordsCache();
     this.phase = 'running';
     this.resetCycle(new Date());
     this.tick();
@@ -180,6 +185,7 @@ export class ReminderController extends EventEmitter {
     this.deps.closeCountdown();
     this.deps.closeFullscreen();
     this.daySessionStore.end();
+    this.invalidateRecordsCache();
     this.phase = 'running';
     this.resetCycle(new Date());
     this.tick();
@@ -204,6 +210,7 @@ export class ReminderController extends EventEmitter {
       completed: correction.completed,
       skipped: correction.skipped
     });
+    this.invalidateRecordsCache();
     this.tick();
     return this.snapshot;
   }
@@ -234,6 +241,7 @@ export class ReminderController extends EventEmitter {
     if (action === 'skip') {
       if (this.currentReminderCountsStats) {
         this.statsStore.increment('skipped');
+        this.invalidateRecordsCache();
       }
       this.phase = 'running';
       this.resetCycle(new Date());
@@ -249,6 +257,7 @@ export class ReminderController extends EventEmitter {
     this.deps.closeFullscreen();
     if (this.currentReminderCountsStats) {
       this.statsStore.increment('completed');
+      this.invalidateRecordsCache();
     }
     this.phase = 'running';
     this.resetCycle(new Date());
@@ -282,7 +291,7 @@ export class ReminderController extends EventEmitter {
     if (!workdayGate.canRunReminders) {
       this.lastWithinSchedule = false;
       this.cycleStartedAt = null;
-      this.emitSnapshot(this.buildSnapshot(now, workdayGate.status === 'ready' ? 'outside-schedule' : workdayGate.status, null, idleSeconds));
+      this.emitSnapshot(this.buildSnapshot(now, workdayGate.status as AppStatus, null, idleSeconds));
       return;
     }
 
@@ -291,7 +300,7 @@ export class ReminderController extends EventEmitter {
       this.lastWithinSchedule = true;
     }
 
-    if (runtimeState.mutedDateKey === localDateKey(now)) {
+    if (runtimeState.mutedDateKey === getDateKey(now)) {
       this.emitSnapshot(this.buildSnapshot(now, 'muted-today', null, idleSeconds));
       return;
     }
@@ -341,6 +350,7 @@ export class ReminderController extends EventEmitter {
     this.currentReminderCountsStats = countStats;
     if (countStats) {
       this.statsStore.increment('reminders');
+      this.invalidateRecordsCache();
     }
 
     this.phase = 'countdown';
@@ -388,7 +398,7 @@ export class ReminderController extends EventEmitter {
   }
 
   private refreshDailyPoemIfNeeded(now: Date): void {
-    const dateKey = localDateKey(now);
+    const dateKey = getDateKey(now);
     if (this.lastPoemRefreshDateKey === dateKey || this.poemRefreshInFlight) {
       return;
     }
@@ -426,19 +436,32 @@ export class ReminderController extends EventEmitter {
         ? new Date(now.getTime() + remainingSeconds * 1000).toISOString()
         : null;
 
+    const todayDateKey = getDateKey(now);
+    if (
+      this.recordsCacheDirty ||
+      this.cachedRecordsDateKey !== todayDateKey ||
+      this.cachedStatsOverview === null ||
+      this.cachedDailyRecords === null
+    ) {
+      this.cachedStatsOverview = this.statsStore.getOverview(now);
+      this.cachedDailyRecords = this.buildDailyRecords(now);
+      this.cachedRecordsDateKey = todayDateKey;
+      this.recordsCacheDirty = false;
+    }
+
     return {
       nowIso: now.toISOString(),
       status,
       settings,
       todayStats: this.statsStore.getToday(now),
-      statsOverview: this.statsStore.getOverview(now),
-      dailyRecords: this.buildDailyRecords(now),
+      statsOverview: this.cachedStatsOverview!,
+      dailyRecords: this.cachedDailyRecords!,
       canRunReminders: workdayGate.canRunReminders,
       scheduleReason: schedule.reason,
       remainingSeconds,
       nextReminderAtIso,
       pauseUntilIso: runtimeState.pauseUntilIso,
-      mutedToday: runtimeState.mutedDateKey === localDateKey(now),
+      mutedToday: runtimeState.mutedDateKey === todayDateKey,
       daySession,
       dailyPoem: this.poemStore.getToday(now),
       idleSeconds,
@@ -478,9 +501,14 @@ export class ReminderController extends EventEmitter {
 
     const endedAt = getOvertimeEndDate(now, settings, idleSeconds);
     this.daySessionStore.end(endedAt);
+    this.invalidateRecordsCache();
     this.resetCycle(now);
     this.emitSnapshot(this.buildSnapshot(now, 'off-work', null, idleSeconds));
     return true;
+  }
+
+  private invalidateRecordsCache(): void {
+    this.recordsCacheDirty = true;
   }
 
   private buildDailyRecords(now: Date): DailyDetailRecord[] {
@@ -523,13 +551,6 @@ export function getOvertimeEndDate(date: Date, settings: AppSettings, idleSecond
   return lastActiveAt.getTime() > scheduledEndAt.getTime() ? lastActiveAt : scheduledEndAt;
 }
 
-function localDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 function getScheduledWorkEndDate(date: Date, settings: AppSettings): Date {
   const startMinutes = parseTimeToMinutes(settings.workSchedule.start);
   const endMinutes = parseTimeToMinutes(settings.workSchedule.end);
@@ -548,15 +569,6 @@ function getScheduledWorkEndDate(date: Date, settings: AppSettings): Date {
 
 function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
-function getRecentDateKeys(limit: number, date: Date): string[] {
-  const days = Math.max(1, Math.floor(limit));
-  return Array.from({ length: days }, (_value, index) => {
-    const current = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    current.setDate(current.getDate() - index);
-    return localDateKey(current);
-  });
 }
 
 function hasDailyRecordActivity(record: DailyDetailRecord): boolean {

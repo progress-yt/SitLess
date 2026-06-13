@@ -104,13 +104,15 @@ function cloneSettings(settings: AppSettings): AppSettings {
   };
 }
 
+const REST_PROMPT_MAX_LENGTH = 50;
+
 function normalizeRestPromptText(value: unknown): string {
   const normalized = typeof value === 'string' ? value.trim() : '';
   if (!normalized) {
     return DEFAULT_REST_PROMPT_OPTIONS[0];
   }
 
-  return normalized.slice(0, 36);
+  return normalized.slice(0, REST_PROMPT_MAX_LENGTH);
 }
 
 function normalizeTimeString(value: unknown, fallback: string): string {
