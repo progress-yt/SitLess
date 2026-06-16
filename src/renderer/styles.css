@@ -385,6 +385,13 @@ input[type="checkbox"] {
   gap: 8px;
 }
 
+.poem-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .poem-panel span {
   color: rgba(36, 35, 31, 0.62);
   font-size: 12px;
@@ -401,6 +408,38 @@ input[type="checkbox"] {
 .poem-panel small {
   color: #6d6a61;
   font-size: 13px;
+}
+
+.poem-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.poem-meta em {
+  color: #2f8278;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.icon-button {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .settings-layout {
@@ -784,7 +823,7 @@ input[type="checkbox"] {
 .countdown-window {
   display: grid;
   height: 100vh;
-  padding: 24px 24px 46px;
+  padding: 24px;
   grid-template-rows: auto minmax(84px, 1fr) 8px auto;
   gap: 18px;
   color: #24231f;
@@ -795,9 +834,16 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   color: #a95c3e;
   font-size: 15px;
   font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.countdown-topline svg {
+  flex: 0 0 auto;
 }
 
 .countdown-number {
@@ -839,7 +885,7 @@ input[type="checkbox"] {
 .fullscreen-reminder img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .fullscreen-caption {
@@ -928,10 +974,6 @@ input[type="checkbox"] {
     justify-content: flex-start;
   }
 
-  .countdown-actions {
-    grid-template-columns: 1fr;
-  }
-
   .mode-selector {
     grid-template-columns: 1fr;
   }
@@ -945,5 +987,11 @@ input[type="checkbox"] {
 
   .fullscreen-caption strong {
     font-size: 22px;
+  }
+}
+
+@media (max-width: 420px) {
+  .countdown-actions {
+    grid-template-columns: 1fr;
   }
 }

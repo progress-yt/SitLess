@@ -10,6 +10,10 @@ interface PoemFile {
   poem: DailyPoem | null;
 }
 
+interface PoemRefreshOptions {
+  force?: boolean;
+}
+
 interface JinrishiciSentenceResponse {
   status?: string;
   data?: {
@@ -48,9 +52,9 @@ export class PoemStore {
     return createFallbackDailyPoem(dateKey);
   }
 
-  async refreshToday(date = new Date()): Promise<DailyPoem> {
+  async refreshToday(date = new Date(), options: PoemRefreshOptions = {}): Promise<DailyPoem> {
     const dateKey = getDateKey(date);
-    if (this.state.poem?.dateKey === dateKey && this.state.poem.source === 'jinrishici') {
+    if (!options.force && this.state.poem?.dateKey === dateKey && this.state.poem.source === 'jinrishici') {
       return this.getToday(date);
     }
 
@@ -64,7 +68,12 @@ export class PoemStore {
       this.persist();
       return poem;
     } catch {
-      const fallback = this.state.poem?.dateKey === dateKey ? this.state.poem : createFallbackDailyPoem(dateKey);
+      const fallback = this.state.poem?.dateKey === dateKey
+        ? {
+            ...this.state.poem,
+            source: this.state.poem.source === 'jinrishici' ? 'cache' : this.state.poem.source
+          }
+        : createFallbackDailyPoem(dateKey);
       this.state = {
         ...this.state,
         poem: fallback

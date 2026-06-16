@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AppSettings, AppSnapshot, CountdownAction, DailyRecordCorrection, ImageSelectionResult } from '../shared/types';
+import type { AppSettings, AppSnapshot, CountdownAction, DailyPoemRefreshResult, DailyRecordCorrection, ImageSelectionResult } from '../shared/types';
 
 const api = {
   getSnapshot: (): Promise<AppSnapshot> => ipcRenderer.invoke('snapshot:get'),
@@ -10,6 +10,7 @@ const api = {
   pauseForHour: (): Promise<AppSnapshot> => ipcRenderer.invoke('reminder:pause-hour'),
   resumeReminders: (): Promise<AppSnapshot> => ipcRenderer.invoke('reminder:resume'),
   muteToday: (): Promise<AppSnapshot> => ipcRenderer.invoke('reminder:mute-today'),
+  refreshDailyPoem: (): Promise<DailyPoemRefreshResult> => ipcRenderer.invoke('poem:refresh'),
   startWorkday: (): Promise<AppSnapshot> => ipcRenderer.invoke('workday:start'),
   endWorkday: (): Promise<AppSnapshot> => ipcRenderer.invoke('workday:end'),
   updateDailyRecord: (correction: DailyRecordCorrection): Promise<AppSnapshot> => ipcRenderer.invoke('records:update', correction),

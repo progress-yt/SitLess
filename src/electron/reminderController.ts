@@ -9,12 +9,15 @@ import type {
   CountdownAction,
   DailyDetailRecord,
   DailyPoem,
+  DailyPoemRefreshResult,
   DailyRecordCorrection,
   DailyStats,
   DaySession,
   ReminderRuntimeState,
   StatsOverview
 } from '../shared/types';
+
+const MANUAL_POEM_REFRESH_COOLDOWN_SECONDS = 60;
 
 interface ReminderSettingsStore {
   get: () => AppSettings;
@@ -46,7 +49,7 @@ interface ReminderRuntimeStateStore {
 
 interface ReminderPoemStore {
   getToday: (date?: Date) => DailyPoem;
-  refreshToday: (date?: Date) => Promise<DailyPoem>;
+  refreshToday: (date?: Date, options?: { force?: boolean }) => Promise<DailyPoem>;
 }
 
 interface ReminderControllerDeps {
@@ -74,6 +77,8 @@ export class ReminderController extends EventEmitter {
   private imageRevision = 0;
   private lastPoemRefreshDateKey: string | null = null;
   private poemRefreshInFlight = false;
+  private manualPoemRefreshInFlight = false;
+  private lastManualPoemRefreshAtMs: number | null = null;
   private cachedDailyRecords: DailyDetailRecord[] | null = null;
   private cachedStatsOverview: StatsOverview | null = null;
   private cachedRecordsDateKey: string | null = null;
@@ -132,8 +137,51 @@ export class ReminderController extends EventEmitter {
     this.tick();
   }
 
-  refreshDailyPoem(): void {
-    this.tick();
+  async refreshDailyPoem(): Promise<DailyPoemRefreshResult> {
+    const now = new Date();
+    if (this.poemRefreshInFlight || this.manualPoemRefreshInFlight) {
+      const snapshot = this.buildSnapshot(now, this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds());
+      this.emitSnapshot(snapshot);
+      return {
+        snapshot,
+        status: 'busy',
+        retryAfterSeconds: snapshot.dailyPoemRefresh.retryAfterSeconds
+      };
+    }
+
+    const retryAfterSeconds = this.getManualPoemRefreshRetryAfterSeconds(now);
+    if (retryAfterSeconds > 0) {
+      const snapshot = this.buildSnapshot(now, this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds());
+      this.emitSnapshot(snapshot);
+      return {
+        snapshot,
+        status: 'rate-limited',
+        retryAfterSeconds
+      };
+    }
+
+    this.lastManualPoemRefreshAtMs = now.getTime();
+    this.manualPoemRefreshInFlight = true;
+    this.emitSnapshot(this.buildSnapshot(now, this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds()));
+
+    let status: DailyPoemRefreshResult['status'] = 'fallback';
+    try {
+      const poem = await this.poemStore.refreshToday(now, { force: true });
+      this.lastPoemRefreshDateKey = getDateKey(now);
+      status = poem.source === 'jinrishici' ? 'refreshed' : 'fallback';
+    } catch {
+      status = 'fallback';
+    } finally {
+      this.manualPoemRefreshInFlight = false;
+    }
+
+    const snapshot = this.buildSnapshot(new Date(), this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds());
+    this.emitSnapshot(snapshot);
+    return {
+      snapshot,
+      status,
+      retryAfterSeconds: snapshot.dailyPoemRefresh.retryAfterSeconds
+    };
   }
 
   pauseForHour(): AppSnapshot {
@@ -406,11 +454,9 @@ export class ReminderController extends EventEmitter {
     this.lastPoemRefreshDateKey = dateKey;
     this.poemRefreshInFlight = true;
     void this.poemStore.refreshToday(now)
-      .then(() => {
-        this.emitSnapshot(this.buildSnapshot(new Date(), this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds()));
-      })
       .finally(() => {
         this.poemRefreshInFlight = false;
+        this.emitSnapshot(this.buildSnapshot(new Date(), this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds()));
       });
   }
 
@@ -464,9 +510,30 @@ export class ReminderController extends EventEmitter {
       mutedToday: runtimeState.mutedDateKey === todayDateKey,
       daySession,
       dailyPoem: this.poemStore.getToday(now),
+      dailyPoemRefresh: this.getDailyPoemRefreshState(now),
       idleSeconds,
       imageRevision: this.imageRevision
     };
+  }
+
+  private getDailyPoemRefreshState(now: Date) {
+    const retryAfterSeconds = this.getManualPoemRefreshRetryAfterSeconds(now);
+    const isRefreshing = this.poemRefreshInFlight || this.manualPoemRefreshInFlight;
+    return {
+      canRefresh: !isRefreshing && retryAfterSeconds === 0,
+      isRefreshing,
+      retryAfterSeconds
+    };
+  }
+
+  private getManualPoemRefreshRetryAfterSeconds(now: Date): number {
+    if (this.lastManualPoemRefreshAtMs === null) {
+      return 0;
+    }
+
+    const elapsedMs = now.getTime() - this.lastManualPoemRefreshAtMs;
+    const remainingMs = MANUAL_POEM_REFRESH_COOLDOWN_SECONDS * 1000 - elapsedMs;
+    return Math.max(0, Math.ceil(remainingMs / 1000));
   }
 
   private emitSnapshot(snapshot: AppSnapshot): void {

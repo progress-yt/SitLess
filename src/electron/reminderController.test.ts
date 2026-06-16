@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultSettings, createEmptyDailyStats, createEmptyDaySession, createEmptyRuntimeState, createFallbackDailyPoem } from '../shared/defaults';
 import { getDateKey } from '../shared/schedule';
 import { createStatsOverview, type DailyStatsFile } from '../shared/stats';
-import type { DailyStats, DaySession, ReminderRuntimeState } from '../shared/types';
+import type { DailyPoem, DailyStats, DaySession, ReminderRuntimeState } from '../shared/types';
 import { ReminderController, getOvertimeEndDate, shouldPromptWorkdayStart } from './reminderController';
 
 describe('workday start prompt schedule', () => {
@@ -192,6 +192,60 @@ describe('snapshot record cache', () => {
   });
 });
 
+describe('daily poem refresh', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FAKE_WEEKDAY);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('forces a manual refresh and exposes the cooldown in the snapshot', async () => {
+    const stores = createControllerStores();
+    const dateKey = getDateKey(FAKE_WEEKDAY);
+    const remotePoem: DailyPoem = {
+      dateKey,
+      content: '手动刷新后的诗句',
+      author: '测试',
+      title: '刷新',
+      source: 'jinrishici'
+    };
+    stores.poemStore.refreshToday = async (_date = new Date(), options) => {
+      stores.poemRefreshCalls.push({ force: options?.force ?? false });
+      stores.poem = remotePoem;
+      return remotePoem;
+    };
+
+    const controller = createController(stores);
+    const result = await controller.refreshDailyPoem();
+
+    expect(result.status).toBe('refreshed');
+    expect(stores.poemRefreshCalls).toEqual([{ force: true }]);
+    expect(result.snapshot.dailyPoem?.content).toBe(remotePoem.content);
+    expect(result.snapshot.dailyPoemRefresh.canRefresh).toBe(false);
+    expect(result.snapshot.dailyPoemRefresh.retryAfterSeconds).toBe(60);
+  });
+
+  it('rate limits repeated manual refreshes', async () => {
+    const stores = createControllerStores();
+    const controller = createController(stores);
+
+    await controller.refreshDailyPoem();
+    const second = await controller.refreshDailyPoem();
+
+    expect(second.status).toBe('rate-limited');
+    expect(second.retryAfterSeconds).toBe(60);
+    expect(stores.poemRefreshCalls).toHaveLength(1);
+
+    vi.advanceTimersByTime(60 * 1000);
+    const third = await controller.refreshDailyPoem();
+
+    expect(third.status).toBe('fallback');
+    expect(stores.poemRefreshCalls).toHaveLength(2);
+  });
+});
+
 function createController(stores: ReturnType<typeof createControllerStores>): ReminderController {
   return new ReminderController(
     stores.settingsStore,
@@ -220,9 +274,18 @@ function createControllerStores() {
     status: 'working',
     startedAtIso: new Date().toISOString()
   };
+  let poem = createFallbackDailyPoem(getDateKey(new Date()));
+  const poemRefreshCalls: Array<{ force: boolean }> = [];
 
   return {
     settings,
+    get poem() {
+      return poem;
+    },
+    set poem(next: DailyPoem) {
+      poem = next;
+    },
+    poemRefreshCalls,
     settingsStore: {
       get: () => settings
     },
@@ -307,8 +370,12 @@ function createControllerStores() {
       }
     },
     poemStore: {
-      getToday: (date = new Date()) => createFallbackDailyPoem(getDateKey(date)),
-      refreshToday: async (date = new Date()) => createFallbackDailyPoem(getDateKey(date))
+      getToday: (date = new Date()) => poem.dateKey === getDateKey(date) ? poem : createFallbackDailyPoem(getDateKey(date)),
+      refreshToday: async (date = new Date(), options?: { force?: boolean }) => {
+        poemRefreshCalls.push({ force: options?.force ?? false });
+        poem = createFallbackDailyPoem(getDateKey(date));
+        return poem;
+      }
     }
   };
 }

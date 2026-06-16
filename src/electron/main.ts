@@ -184,7 +184,7 @@ function showCountdownWindow(): void {
 
   countdownWindow = new BrowserWindow({
     width: 436,
-    height: 318,
+    height: 360,
     resizable: false,
     maximizable: false,
     minimizable: false,
@@ -449,6 +449,7 @@ ipcMain.handle('reminder:test', () => controller.testReminderFlow());
 ipcMain.handle('reminder:pause-hour', () => controller.pauseForHour());
 ipcMain.handle('reminder:resume', () => controller.resumeReminders());
 ipcMain.handle('reminder:mute-today', () => controller.muteToday());
+ipcMain.handle('poem:refresh', () => controller.refreshDailyPoem());
 ipcMain.handle('workday:start', () => controller.startWorkday());
 ipcMain.handle('workday:end', () => controller.endWorkday());
 ipcMain.handle('records:update', (_event, correction: DailyRecordCorrection) => controller.updateDailyRecord(correction));

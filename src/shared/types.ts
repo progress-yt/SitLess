@@ -100,6 +100,20 @@ export interface DailyPoem {
   source: 'jinrishici' | 'fallback' | 'cache';
 }
 
+export interface DailyPoemRefreshState {
+  canRefresh: boolean;
+  isRefreshing: boolean;
+  retryAfterSeconds: number;
+}
+
+export type DailyPoemRefreshStatus = 'refreshed' | 'fallback' | 'rate-limited' | 'busy';
+
+export interface DailyPoemRefreshResult {
+  snapshot: AppSnapshot;
+  status: DailyPoemRefreshStatus;
+  retryAfterSeconds: number;
+}
+
 export interface AppSnapshot {
   nowIso: string;
   status: AppStatus;
@@ -115,6 +129,7 @@ export interface AppSnapshot {
   mutedToday: boolean;
   daySession: DaySession;
   dailyPoem: DailyPoem | null;
+  dailyPoemRefresh: DailyPoemRefreshState;
   idleSeconds: number;
   imageRevision: number;
 }

@@ -6,8 +6,10 @@ import {
   createFallbackDailyPoem
 } from '../shared/defaults';
 import { getDateKey } from '../shared/schedule';
-import type { AppSettings, AppSnapshot, CountdownAction, DailyDetailRecord, DailyRecordCorrection, DaySession, ImageSelectionResult } from '../shared/types';
+import type { AppSettings, AppSnapshot, CountdownAction, DailyDetailRecord, DailyPoem, DailyPoemRefreshResult, DailyRecordCorrection, DaySession, ImageSelectionResult } from '../shared/types';
 import type { SitlessApi } from '../electron/preload';
+
+const BROWSER_POEM_REFRESH_COOLDOWN_SECONDS = 60;
 
 let browserSettings = createDefaultSettings();
 let browserDaySession: DaySession = {
@@ -18,10 +20,14 @@ let browserDaySession: DaySession = {
   startPromptedAtIso: null
 };
 let browserDailyRecords: DailyDetailRecord[] = [];
+let browserDailyPoem: DailyPoem | null = null;
+let browserLastPoemRefreshAtMs: number | null = null;
+let browserPoemRefreshInFlight = false;
 
 function createBrowserSnapshot(): AppSnapshot {
   const now = new Date();
   const dateKey = getDateKey(now);
+  browserDailyPoem = browserDailyPoem?.dateKey === dateKey ? browserDailyPoem : createFallbackDailyPoem(dateKey);
   return {
     nowIso: now.toISOString(),
     status: 'counting',
@@ -36,7 +42,8 @@ function createBrowserSnapshot(): AppSnapshot {
     pauseUntilIso: null,
     mutedToday: false,
     daySession: browserDaySession,
-    dailyPoem: createFallbackDailyPoem(dateKey),
+    dailyPoem: browserDailyPoem,
+    dailyPoemRefresh: getBrowserPoemRefreshState(now),
     idleSeconds: 0,
     imageRevision: 0
   };
@@ -60,6 +67,37 @@ const browserFallbackApi: SitlessApi = {
   pauseForHour: async () => ({ ...createBrowserSnapshot(), status: 'paused' }),
   resumeReminders: async () => createBrowserSnapshot(),
   muteToday: async () => ({ ...createBrowserSnapshot(), status: 'muted-today', mutedToday: true }),
+  refreshDailyPoem: async (): Promise<DailyPoemRefreshResult> => {
+    const now = new Date();
+    if (browserPoemRefreshInFlight) {
+      return {
+        snapshot: createBrowserSnapshot(),
+        status: 'busy',
+        retryAfterSeconds: getBrowserPoemRefreshRetryAfterSeconds(now)
+      };
+    }
+
+    const retryAfterSeconds = getBrowserPoemRefreshRetryAfterSeconds(now);
+    if (retryAfterSeconds > 0) {
+      return {
+        snapshot: createBrowserSnapshot(),
+        status: 'rate-limited',
+        retryAfterSeconds
+      };
+    }
+
+    browserPoemRefreshInFlight = true;
+    browserLastPoemRefreshAtMs = now.getTime();
+    browserDailyPoem = createFallbackDailyPoem(getDateKey(now));
+    browserPoemRefreshInFlight = false;
+
+    const snapshot = createBrowserSnapshot();
+    return {
+      snapshot,
+      status: 'fallback',
+      retryAfterSeconds: snapshot.dailyPoemRefresh.retryAfterSeconds
+    };
+  },
   updateDailyRecord: async (correction: DailyRecordCorrection) => {
     browserDailyRecords = upsertBrowserDailyRecord(browserDailyRecords, correction);
     return createBrowserSnapshot();
@@ -115,4 +153,23 @@ function upsertBrowserDailyRecord(records: DailyDetailRecord[], correction: Dail
   };
   const rest = records.filter((record) => record.dateKey !== correction.dateKey);
   return [next, ...rest].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+}
+
+function getBrowserPoemRefreshState(now: Date) {
+  const retryAfterSeconds = getBrowserPoemRefreshRetryAfterSeconds(now);
+  return {
+    canRefresh: !browserPoemRefreshInFlight && retryAfterSeconds === 0,
+    isRefreshing: browserPoemRefreshInFlight,
+    retryAfterSeconds
+  };
+}
+
+function getBrowserPoemRefreshRetryAfterSeconds(now: Date): number {
+  if (browserLastPoemRefreshAtMs === null) {
+    return 0;
+  }
+
+  const elapsedMs = now.getTime() - browserLastPoemRefreshAtMs;
+  const remainingMs = BROWSER_POEM_REFRESH_COOLDOWN_SECONDS * 1000 - elapsedMs;
+  return Math.max(0, Math.ceil(remainingMs / 1000));
 }

@@ -13,6 +13,7 @@ import {
   Pause,
   Play,
   Power,
+  RefreshCw,
   RotateCcw,
   Settings2,
   SkipForward,
@@ -145,7 +146,36 @@ function MainView({ snapshot }: { snapshot: AppSnapshot }) {
 function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
   const progress = getProgress(snapshot);
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('day');
+  const [poemFeedback, setPoemFeedback] = useState<string | null>(null);
+  const [poemRefreshPending, setPoemRefreshPending] = useState(false);
   const selectedStats = snapshot.statsOverview[statsPeriod];
+  const poemRefreshState = snapshot.dailyPoemRefresh;
+  const isPoemRefreshing = poemRefreshPending || poemRefreshState.isRefreshing;
+  const poemRefreshDisabled = isPoemRefreshing || !poemRefreshState.canRefresh;
+  const poemRefreshTitle = getPoemRefreshTitle(poemRefreshState, isPoemRefreshing);
+
+  useEffect(() => {
+    if (!poemFeedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setPoemFeedback(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [poemFeedback]);
+
+  const refreshPoem = async () => {
+    if (poemRefreshDisabled) {
+      return;
+    }
+
+    setPoemRefreshPending(true);
+    try {
+      const result = await sitlessApi.refreshDailyPoem();
+      setPoemFeedback(getPoemRefreshFeedback(result.status, result.retryAfterSeconds));
+    } finally {
+      setPoemRefreshPending(false);
+    }
+  };
 
   return (
     <div className="main-grid">
@@ -177,9 +207,24 @@ function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
 
       {snapshot.dailyPoem ? (
         <section className="workspace-panel poem-panel">
-          <span>今日诗词</span>
+          <div className="poem-heading">
+            <span>今日诗词</span>
+            <button
+              className="icon-button poem-refresh-button"
+              type="button"
+              aria-label={poemRefreshTitle}
+              title={poemRefreshTitle}
+              disabled={poemRefreshDisabled}
+              onClick={refreshPoem}
+            >
+              <RefreshCw className={isPoemRefreshing ? 'spin' : ''} size={16} />
+            </button>
+          </div>
           <blockquote>{snapshot.dailyPoem.content}</blockquote>
-          <small>{formatPoemSource(snapshot.dailyPoem)}</small>
+          <div className="poem-meta">
+            <small>{formatPoemSource(snapshot.dailyPoem)}</small>
+            {poemFeedback ? <em>{poemFeedback}</em> : poemRefreshState.retryAfterSeconds > 0 ? <em>{poemRefreshState.retryAfterSeconds} 秒后可刷新</em> : null}
+          </div>
         </section>
       ) : null}
 
@@ -1009,6 +1054,34 @@ function getWorkStatusLabel(status: AppSnapshot['daySession']['status']): string
 function formatPoemSource(poem: NonNullable<AppSnapshot['dailyPoem']>): string {
   const source = [poem.author, poem.title ? `《${poem.title}》` : null].filter(Boolean).join(' ');
   return source || '今日诗词';
+}
+
+function getPoemRefreshTitle(state: AppSnapshot['dailyPoemRefresh'], isRefreshing: boolean): string {
+  if (isRefreshing) {
+    return '正在刷新今日诗词';
+  }
+
+  if (state.retryAfterSeconds > 0) {
+    return `${state.retryAfterSeconds} 秒后可再次刷新`;
+  }
+
+  return '刷新今日诗词';
+}
+
+function getPoemRefreshFeedback(status: 'refreshed' | 'fallback' | 'rate-limited' | 'busy', retryAfterSeconds: number): string {
+  if (status === 'refreshed') {
+    return '已刷新';
+  }
+
+  if (status === 'fallback') {
+    return '远程不可用，已使用本地诗词';
+  }
+
+  if (status === 'busy') {
+    return '正在刷新';
+  }
+
+  return `${retryAfterSeconds} 秒后可再次刷新`;
 }
 
 function getStatsPeriodLabel(period: StatsPeriod): string {
