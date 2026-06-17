@@ -801,6 +801,67 @@ input[type="checkbox"] {
   background: #d8d4c8;
 }
 
+.built-in-image-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.built-in-image-options button {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  justify-content: stretch;
+  gap: 10px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px;
+  text-align: left;
+}
+
+.built-in-image-options button.active {
+  color: #ffffff;
+  border-color: #2f8278;
+  background: #2f8278;
+}
+
+.built-in-image-options img {
+  width: 72px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  background: rgba(38, 37, 32, 0.12);
+}
+
+.built-in-image-options span {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 3px;
+}
+
+.built-in-image-options strong,
+.built-in-image-options small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.built-in-image-options strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.built-in-image-options small {
+  color: #6d6a61;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.built-in-image-options button.active small {
+  color: rgba(255, 255, 255, 0.76);
+}
+
 .prompt-options {
   display: flex;
   flex-wrap: wrap;
@@ -975,6 +1036,10 @@ input[type="checkbox"] {
   }
 
   .mode-selector {
+    grid-template-columns: 1fr;
+  }
+
+  .built-in-image-options {
     grid-template-columns: 1fr;
   }
 

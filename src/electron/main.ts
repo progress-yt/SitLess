@@ -23,7 +23,8 @@ import { RuntimeStateStore } from './runtimeStateStore';
 import { PoemStore } from './poemStore';
 import { ReminderController } from './reminderController';
 import { FALLBACK_TRAY_ICON_DATA_URL } from './trayIconData';
-import type { AppSettings, AppSnapshot, CountdownAction, DailyRecordCorrection } from '../shared/types';
+import { BUILT_IN_REMINDER_IMAGES, DEFAULT_BUILT_IN_REMINDER_IMAGE_ID } from '../shared/defaults';
+import type { AppSettings, AppSnapshot, BuiltInReminderImageId, CountdownAction, DailyRecordCorrection } from '../shared/types';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -393,7 +394,11 @@ function getCurrentReminderImagePath(): string {
     return settings.customReminderImagePath;
   }
 
-  return join(app.getAppPath(), 'assets', 'default-reminder.svg');
+  return join(app.getAppPath(), 'assets', getBuiltInReminderImage(settings.builtInReminderImageId).assetFilename);
+}
+
+function getBuiltInReminderImage(imageId: BuiltInReminderImageId) {
+  return BUILT_IN_REMINDER_IMAGES.find((image) => image.id === imageId) ?? BUILT_IN_REMINDER_IMAGES[0];
 }
 
 ipcMain.handle('snapshot:get', () => controller.getSnapshot());
@@ -403,6 +408,9 @@ ipcMain.handle('settings:update', (_event, settings: AppSettings) => {
   const next = settingsStore.update(settings);
   applyStartupSetting(next);
   controller.handleSettingsChange(previous, next);
+  if (previous.customReminderImagePath !== next.customReminderImagePath || previous.builtInReminderImageId !== next.builtInReminderImageId) {
+    controller.bumpImageRevision();
+  }
   return next;
 });
 
@@ -440,7 +448,24 @@ ipcMain.handle('image:reset', () => {
     rmSync(settings.customReminderImagePath, { force: true });
   }
 
-  const next = settingsStore.patch({ customReminderImagePath: null });
+  const next = settingsStore.patch({
+    customReminderImagePath: null,
+    builtInReminderImageId: DEFAULT_BUILT_IN_REMINDER_IMAGE_ID
+  });
+  controller.bumpImageRevision();
+  return next;
+});
+
+ipcMain.handle('image:set-built-in', (_event, imageId: BuiltInReminderImageId) => {
+  const settings = settingsStore.get();
+  if (settings.customReminderImagePath && existsSync(settings.customReminderImagePath)) {
+    rmSync(settings.customReminderImagePath, { force: true });
+  }
+
+  const next = settingsStore.patch({
+    customReminderImagePath: null,
+    builtInReminderImageId: getBuiltInReminderImage(imageId).id
+  });
   controller.bumpImageRevision();
   return next;
 });

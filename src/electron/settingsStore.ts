@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { join } from 'node:path';
-import { DEFAULT_REST_PROMPT_OPTIONS, createDefaultSettings } from '../shared/defaults';
-import type { AppSettings } from '../shared/types';
+import { BUILT_IN_REMINDER_IMAGES, DEFAULT_BUILT_IN_REMINDER_IMAGE_ID, DEFAULT_REST_PROMPT_OPTIONS, createDefaultSettings } from '../shared/defaults';
+import type { AppSettings, BuiltInReminderImageId } from '../shared/types';
 import { clampNumber } from '../shared/schedule';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 
@@ -90,6 +90,7 @@ function normalizeSettings(value: unknown): AppSettings {
     launchAtStartup: Boolean(merged.launchAtStartup),
     hasSeenStartupPrompt: Boolean(merged.hasSeenStartupPrompt),
     customReminderImagePath: typeof merged.customReminderImagePath === 'string' && merged.customReminderImagePath ? merged.customReminderImagePath : null,
+    builtInReminderImageId: normalizeBuiltInReminderImageId(merged.builtInReminderImageId),
     restPromptText: normalizeRestPromptText(merged.restPromptText)
   };
 }
@@ -113,6 +114,12 @@ function normalizeRestPromptText(value: unknown): string {
   }
 
   return normalized.slice(0, REST_PROMPT_MAX_LENGTH);
+}
+
+function normalizeBuiltInReminderImageId(value: unknown): BuiltInReminderImageId {
+  return BUILT_IN_REMINDER_IMAGES.some((image) => image.id === value)
+    ? value as BuiltInReminderImageId
+    : DEFAULT_BUILT_IN_REMINDER_IMAGE_ID;
 }
 
 function normalizeTimeString(value: unknown, fallback: string): string {

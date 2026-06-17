@@ -16,6 +16,9 @@ interface PoemRefreshOptions {
 
 interface JinrishiciSentenceResponse {
   status?: string;
+  statusCode?: number;
+  errCode?: number;
+  errMessage?: string;
   data?: {
     content?: string;
     origin?: {
@@ -59,8 +62,7 @@ export class PoemStore {
     }
 
     try {
-      const token = await this.getToken();
-      const poem = await fetchDailyPoem(token, dateKey);
+      const poem = await this.refreshRemotePoem(dateKey);
       this.state = {
         ...this.state,
         poem
@@ -83,8 +85,22 @@ export class PoemStore {
     }
   }
 
-  private async getToken(): Promise<string> {
-    if (this.state.token) {
+  private async refreshRemotePoem(dateKey: string): Promise<DailyPoem> {
+    const token = await this.getToken();
+    try {
+      return await fetchDailyPoem(token, dateKey);
+    } catch (error) {
+      if (!(error instanceof TokenRejectedError)) {
+        throw error;
+      }
+
+      const freshToken = await this.getToken({ force: true });
+      return fetchDailyPoem(freshToken, dateKey);
+    }
+  }
+
+  private async getToken(options: { force?: boolean } = {}): Promise<string> {
+    if (this.state.token && !options.force) {
       return this.state.token;
     }
 
@@ -112,6 +128,13 @@ export class PoemStore {
   }
 }
 
+class TokenRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TokenRejectedError';
+  }
+}
+
 async function fetchDailyPoem(token: string, dateKey: string): Promise<DailyPoem> {
   const response = await net.fetch('https://v2.jinrishici.com/sentence', {
     headers: {
@@ -120,6 +143,11 @@ async function fetchDailyPoem(token: string, dateKey: string): Promise<DailyPoem
   });
 
   if (!response.ok) {
+    const json = await readJsonResponse<JinrishiciSentenceResponse>(response);
+    if (isTokenRejectedResponse(response.status, json)) {
+      throw new TokenRejectedError(json?.errMessage || `Poem token rejected with HTTP ${response.status}`);
+    }
+
     throw new Error(`Poem request failed with HTTP ${response.status}`);
   }
 
@@ -136,6 +164,21 @@ async function fetchDailyPoem(token: string, dateKey: string): Promise<DailyPoem
     title: json.data?.origin?.title?.trim() || null,
     source: 'jinrishici'
   };
+}
+
+async function readJsonResponse<T>(response: Awaited<ReturnType<typeof net.fetch>>): Promise<T | null> {
+  try {
+    return await response.json() as T;
+  } catch {
+    return null;
+  }
+}
+
+function isTokenRejectedResponse(status: number, json: JinrishiciSentenceResponse | null): boolean {
+  return (
+    status === 400 &&
+    (json?.errCode === 2004 || json?.errMessage?.toLowerCase().includes('token') === true)
+  );
 }
 
 function normalizePoemFile(value: unknown): PoemFile {

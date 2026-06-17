@@ -15,6 +15,15 @@ export type AppStatus =
 
 export type WorkdayStatus = 'not-started' | 'working' | 'off-work';
 
+export type BuiltInReminderImageId = 'desk' | 'walk';
+
+export interface BuiltInReminderImage {
+  id: BuiltInReminderImageId;
+  label: string;
+  description: string;
+  assetFilename: string;
+}
+
 export interface LunchBreakSettings {
   enabled: boolean;
   start: string;
@@ -39,6 +48,7 @@ export interface AppSettings {
   launchAtStartup: boolean;
   hasSeenStartupPrompt: boolean;
   customReminderImagePath: string | null;
+  builtInReminderImageId: BuiltInReminderImageId;
   restPromptText: string;
   updatedAtIso: string;
 }

@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AppSettings, AppSnapshot, CountdownAction, DailyPoemRefreshResult, DailyRecordCorrection, ImageSelectionResult } from '../shared/types';
+import type { AppSettings, AppSnapshot, BuiltInReminderImageId, CountdownAction, DailyPoemRefreshResult, DailyRecordCorrection, ImageSelectionResult } from '../shared/types';
 
 const api = {
   getSnapshot: (): Promise<AppSnapshot> => ipcRenderer.invoke('snapshot:get'),
   updateSettings: (settings: AppSettings): Promise<AppSettings> => ipcRenderer.invoke('settings:update', settings),
   selectReminderImage: (): Promise<ImageSelectionResult> => ipcRenderer.invoke('image:select'),
   resetReminderImage: (): Promise<AppSettings> => ipcRenderer.invoke('image:reset'),
+  setBuiltInReminderImage: (imageId: BuiltInReminderImageId): Promise<AppSettings> => ipcRenderer.invoke('image:set-built-in', imageId),
   testReminderFlow: (): Promise<AppSnapshot> => ipcRenderer.invoke('reminder:test'),
   pauseForHour: (): Promise<AppSnapshot> => ipcRenderer.invoke('reminder:pause-hour'),
   resumeReminders: (): Promise<AppSnapshot> => ipcRenderer.invoke('reminder:resume'),

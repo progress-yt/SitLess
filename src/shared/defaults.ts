@@ -1,5 +1,7 @@
 import type {
   AppSettings,
+  BuiltInReminderImage,
+  BuiltInReminderImageId,
   DailyPoem,
   DailyStats,
   DaySession,
@@ -16,6 +18,23 @@ export const DEFAULT_REST_PROMPT_OPTIONS = [
   '喝口水，放松眼睛',
   '调整坐姿，活动身体'
 ];
+
+export const BUILT_IN_REMINDER_IMAGES: BuiltInReminderImage[] = [
+  {
+    id: 'desk',
+    label: '办公桌',
+    description: '柔和室内场景',
+    assetFilename: 'default-reminder.svg'
+  },
+  {
+    id: 'walk',
+    label: '散步',
+    description: '户外走动场景',
+    assetFilename: 'default-reminder-walk.svg'
+  }
+];
+
+export const DEFAULT_BUILT_IN_REMINDER_IMAGE_ID: BuiltInReminderImageId = 'desk';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   mode: 'active',
@@ -37,6 +56,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   launchAtStartup: false,
   hasSeenStartupPrompt: false,
   customReminderImagePath: null,
+  builtInReminderImageId: DEFAULT_BUILT_IN_REMINDER_IMAGE_ID,
   restPromptText: DEFAULT_REST_PROMPT_OPTIONS[0],
   updatedAtIso: new Date(0).toISOString()
 };

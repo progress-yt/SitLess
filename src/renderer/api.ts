@@ -1,4 +1,5 @@
 import {
+  DEFAULT_BUILT_IN_REMINDER_IMAGE_ID,
   createDefaultSettings,
   createEmptyDailyStats,
   createEmptyDaySession,
@@ -60,7 +61,15 @@ const browserFallbackApi: SitlessApi = {
     settings: browserSettings
   }),
   resetReminderImage: async () => {
-    browserSettings = { ...browserSettings, customReminderImagePath: null };
+    browserSettings = {
+      ...browserSettings,
+      customReminderImagePath: null,
+      builtInReminderImageId: DEFAULT_BUILT_IN_REMINDER_IMAGE_ID
+    };
+    return browserSettings;
+  },
+  setBuiltInReminderImage: async (imageId) => {
+    browserSettings = { ...browserSettings, customReminderImagePath: null, builtInReminderImageId: imageId };
     return browserSettings;
   },
   testReminderFlow: async () => createBrowserSnapshot(),

@@ -26,7 +26,8 @@ import {
 import type { AppSettings, AppSnapshot, AppStatus, ReminderMode, StatsPeriod, StatsSummary } from '../shared/types';
 import { sitlessApi } from './api';
 import defaultReminderUrl from '../../assets/default-reminder.svg?url';
-import { DEFAULT_REST_PROMPT_OPTIONS } from '../shared/defaults';
+import walkReminderUrl from '../../assets/default-reminder-walk.svg?url';
+import { BUILT_IN_REMINDER_IMAGES, DEFAULT_REST_PROMPT_OPTIONS } from '../shared/defaults';
 
 type ViewName = 'main' | 'countdown' | 'fullscreen';
 type MainTab = 'home' | 'records' | 'settings';
@@ -483,6 +484,22 @@ function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
         </div>
 
         <img className="image-preview" src={getReminderImageUrl(snapshot)} alt="当前提醒图片" />
+        <div className="built-in-image-options" aria-label="内置提醒图片">
+          {BUILT_IN_REMINDER_IMAGES.map((image) => (
+            <button
+              key={image.id}
+              type="button"
+              className={!settings.customReminderImagePath && settings.builtInReminderImageId === image.id ? 'active' : ''}
+              onClick={() => sitlessApi.setBuiltInReminderImage(image.id)}
+            >
+              <img src={getBuiltInReminderImageUrl(image.id)} alt="" aria-hidden="true" />
+              <span>
+                <strong>{image.label}</strong>
+                <small>{image.description}</small>
+              </span>
+            </button>
+          ))}
+        </div>
         <div className="quick-actions">
           <button type="button" onClick={() => sitlessApi.selectReminderImage()}>
             <Image size={17} />
@@ -868,6 +885,14 @@ function getViewName(): ViewName {
 function getReminderImageUrl(snapshot: AppSnapshot): string {
   if (window.sitless) {
     return `sitless://reminder-image/current?revision=${snapshot.imageRevision}`;
+  }
+
+  return getBuiltInReminderImageUrl(snapshot.settings.builtInReminderImageId);
+}
+
+function getBuiltInReminderImageUrl(imageId: AppSettings['builtInReminderImageId']): string {
+  if (imageId === 'walk') {
+    return walkReminderUrl;
   }
 
   return defaultReminderUrl;
