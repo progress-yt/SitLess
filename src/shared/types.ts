@@ -15,7 +15,7 @@ export type AppStatus =
 
 export type WorkdayStatus = 'not-started' | 'working' | 'off-work';
 
-export type BuiltInReminderImageId = 'desk' | 'walk';
+export type BuiltInReminderImageId = 'desk' | 'walk' | 'photo-1' | 'photo-2';
 
 export interface BuiltInReminderImage {
   id: BuiltInReminderImageId;
@@ -42,13 +42,14 @@ export interface AppSettings {
   activeThresholdMinutes: number;
   fixedIntervalMinutes: number;
   idleResetMinutes: number;
+  autoEndIdleMinutes: number;
   snoozeMinutes: number;
   countdownSeconds: number;
   soundEnabled: boolean;
   launchAtStartup: boolean;
   hasSeenStartupPrompt: boolean;
-  customReminderImagePath: string | null;
   builtInReminderImageId: BuiltInReminderImageId;
+  customReminderImagePath: string | null;
   restPromptText: string;
   updatedAtIso: string;
 }

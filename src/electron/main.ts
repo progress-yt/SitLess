@@ -408,7 +408,7 @@ ipcMain.handle('settings:update', (_event, settings: AppSettings) => {
   const next = settingsStore.update(settings);
   applyStartupSetting(next);
   controller.handleSettingsChange(previous, next);
-  if (previous.customReminderImagePath !== next.customReminderImagePath || previous.builtInReminderImageId !== next.builtInReminderImageId) {
+  if (didReminderImageChange(previous, next)) {
     controller.bumpImageRevision();
   }
   return next;
@@ -493,6 +493,13 @@ function broadcastSnapshot(snapshot: AppSnapshot): void {
       window.webContents.send('snapshot:update', snapshot);
     }
   });
+}
+
+function didReminderImageChange(previous: AppSettings, next: AppSettings): boolean {
+  return (
+    previous.builtInReminderImageId !== next.builtInReminderImageId ||
+    previous.customReminderImagePath !== next.customReminderImagePath
+  );
 }
 
 function getStatusLabel(snapshot: AppSnapshot): string {

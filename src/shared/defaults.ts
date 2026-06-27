@@ -31,6 +31,18 @@ export const BUILT_IN_REMINDER_IMAGES: BuiltInReminderImage[] = [
     label: '散步',
     description: '户外走动场景',
     assetFilename: 'default-reminder-walk.svg'
+  },
+  {
+    id: 'photo-1',
+    label: '照片 1',
+    description: '真实办公空间',
+    assetFilename: 'reminder-photo-1.png'
+  },
+  {
+    id: 'photo-2',
+    label: '照片 2',
+    description: '阳光休息提醒',
+    assetFilename: 'reminder-photo-2.png'
   }
 ];
 
@@ -50,13 +62,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   activeThresholdMinutes: 45,
   fixedIntervalMinutes: 45,
   idleResetMinutes: 5,
+  autoEndIdleMinutes: 60,
   snoozeMinutes: 10,
   countdownSeconds: 10,
   soundEnabled: true,
   launchAtStartup: false,
   hasSeenStartupPrompt: false,
-  customReminderImagePath: null,
   builtInReminderImageId: DEFAULT_BUILT_IN_REMINDER_IMAGE_ID,
+  customReminderImagePath: null,
   restPromptText: DEFAULT_REST_PROMPT_OPTIONS[0],
   updatedAtIso: new Date(0).toISOString()
 };

@@ -23,14 +23,32 @@ import {
   Volume2,
   VolumeX
 } from 'lucide-react';
-import type { AppSettings, AppSnapshot, AppStatus, ReminderMode, StatsPeriod, StatsSummary } from '../shared/types';
+import type { AppSettings, AppSnapshot, AppStatus, BuiltInReminderImageId, ReminderMode, StatsPeriod, StatsSummary } from '../shared/types';
 import { sitlessApi } from './api';
 import defaultReminderUrl from '../../assets/default-reminder.svg?url';
 import walkReminderUrl from '../../assets/default-reminder-walk.svg?url';
+import reminderPhoto1Url from '../../assets/reminder-photo-1.png?url';
+import reminderPhoto2Url from '../../assets/reminder-photo-2.png?url';
 import { BUILT_IN_REMINDER_IMAGES, DEFAULT_REST_PROMPT_OPTIONS } from '../shared/defaults';
 
 type ViewName = 'main' | 'countdown' | 'fullscreen';
 type MainTab = 'home' | 'records' | 'settings';
+
+interface RecordDraft {
+  workStatus: AppSnapshot['daySession']['status'];
+  startTime: string;
+  endTime: string;
+  reminders: number;
+  completed: number;
+  skipped: number;
+}
+
+const BUILT_IN_REMINDER_PREVIEW_URLS: Record<BuiltInReminderImageId, string> = {
+  desk: defaultReminderUrl,
+  walk: walkReminderUrl,
+  'photo-1': reminderPhoto1Url,
+  'photo-2': reminderPhoto2Url
+};
 
 const STATUS_LABELS: Record<AppStatus, string> = {
   'outside-schedule': '不在提醒时段',
@@ -471,6 +489,14 @@ function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
         <div className="settings-grid two">
           <TimeField label="午休开始" value={settings.workSchedule.lunch.start} onChange={(start) => updateLunch({ start })} />
           <TimeField label="午休结束" value={settings.workSchedule.lunch.end} onChange={(end) => updateLunch({ end })} />
+          <NumberField
+            label="下班后空闲"
+            suffix="分钟"
+            min={15}
+            max={240}
+            value={settings.autoEndIdleMinutes}
+            onChange={(value) => update({ autoEndIdleMinutes: value })}
+          />
         </div>
       </section>
 
@@ -490,6 +516,7 @@ function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
               key={image.id}
               type="button"
               className={!settings.customReminderImagePath && settings.builtInReminderImageId === image.id ? 'active' : ''}
+              aria-pressed={!settings.customReminderImagePath && settings.builtInReminderImageId === image.id}
               onClick={() => sitlessApi.setBuiltInReminderImage(image.id)}
             >
               <img src={getBuiltInReminderImageUrl(image.id)} alt="" aria-hidden="true" />
@@ -733,6 +760,7 @@ function DailyRecordRow({ record }: { record: AppSnapshot['dailyRecords'][number
   const [draft, setDraft] = useState(() => createRecordDraft(record));
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const normalizedDraft = normalizeRecordDraft(draft);
 
   useEffect(() => {
     if (!isEditing) {
@@ -740,16 +768,21 @@ function DailyRecordRow({ record }: { record: AppSnapshot['dailyRecords'][number
     }
   }, [isEditing, record]);
 
+  const updateDraft = (patch: Partial<RecordDraft>) => {
+    setDraft((current) => normalizeRecordDraft({ ...current, ...patch }));
+  };
+
   const save = async () => {
+    const next = normalizeRecordDraft(draft);
     setIsSaving(true);
     await sitlessApi.updateDailyRecord({
       dateKey: record.dateKey,
-      workStatus: draft.workStatus,
-      workStartedAtIso: combineDateAndTime(record.dateKey, draft.startTime),
-      workEndedAtIso: combineDateAndTime(record.dateKey, draft.endTime),
-      reminders: draft.reminders,
-      completed: draft.completed,
-      skipped: draft.skipped
+      workStatus: next.workStatus,
+      workStartedAtIso: combineDateAndTime(record.dateKey, next.startTime),
+      workEndedAtIso: combineDateAndTime(record.dateKey, next.endTime),
+      reminders: next.reminders,
+      completed: next.completed,
+      skipped: next.skipped
     });
     setIsSaving(false);
     setIsEditing(false);
@@ -760,7 +793,7 @@ function DailyRecordRow({ record }: { record: AppSnapshot['dailyRecords'][number
     setIsEditing(false);
   };
 
-  const completionRate = draft.reminders > 0 ? draft.completed / draft.reminders : 0;
+  const completionRate = normalizedDraft.reminders > 0 ? normalizedDraft.completed / normalizedDraft.reminders : 0;
 
   return (
     <>
@@ -792,7 +825,7 @@ function DailyRecordRow({ record }: { record: AppSnapshot['dailyRecords'][number
                 <select
                   className="record-status-select"
                   value={draft.workStatus}
-                  onChange={(event) => setDraft({ ...draft, workStatus: event.target.value as AppSnapshot['daySession']['status'] })}
+                  onChange={(event) => updateDraft({ workStatus: event.target.value as AppSnapshot['daySession']['status'] })}
                 >
                   <option value="not-started">未开始</option>
                   <option value="working">工作中</option>
@@ -801,23 +834,23 @@ function DailyRecordRow({ record }: { record: AppSnapshot['dailyRecords'][number
               </label>
               <label>
                 <span>上班</span>
-                <input className="record-time-input" type="time" value={draft.startTime} onChange={(event) => setDraft({ ...draft, startTime: event.target.value })} />
+                <input className="record-time-input" type="time" value={draft.startTime} onChange={(event) => updateDraft({ startTime: event.target.value })} />
               </label>
               <label>
                 <span>下班</span>
-                <input className="record-time-input" type="time" value={draft.endTime} onChange={(event) => setDraft({ ...draft, endTime: event.target.value })} />
+                <input className="record-time-input" type="time" value={draft.endTime} onChange={(event) => updateDraft({ endTime: event.target.value })} />
               </label>
               <label>
                 <span>提醒</span>
-                <input className="record-number-input" type="number" min={0} value={draft.reminders} onChange={(event) => setDraft({ ...draft, reminders: normalizeDraftCount(event.target.value) })} />
+                <input className="record-number-input" type="number" min={0} value={normalizedDraft.reminders} onChange={(event) => updateDraft({ reminders: normalizeDraftCount(event.target.value) })} />
               </label>
               <label>
                 <span>已起身</span>
-                <input className="record-number-input" type="number" min={0} value={draft.completed} onChange={(event) => setDraft({ ...draft, completed: normalizeDraftCount(event.target.value) })} />
+                <input className="record-number-input" type="number" min={0} max={normalizedDraft.reminders} value={normalizedDraft.completed} onChange={(event) => updateDraft({ completed: normalizeDraftCount(event.target.value) })} />
               </label>
               <label>
                 <span>跳过</span>
-                <input className="record-number-input" type="number" min={0} value={draft.skipped} onChange={(event) => setDraft({ ...draft, skipped: normalizeDraftCount(event.target.value) })} />
+                <input className="record-number-input" type="number" min={0} max={normalizedDraft.reminders - normalizedDraft.completed} value={normalizedDraft.skipped} onChange={(event) => updateDraft({ skipped: normalizeDraftCount(event.target.value) })} />
               </label>
               <div className="record-edit-rate">
                 <span>完成率</span>
@@ -891,11 +924,7 @@ function getReminderImageUrl(snapshot: AppSnapshot): string {
 }
 
 function getBuiltInReminderImageUrl(imageId: AppSettings['builtInReminderImageId']): string {
-  if (imageId === 'walk') {
-    return walkReminderUrl;
-  }
-
-  return defaultReminderUrl;
+  return BUILT_IN_REMINDER_PREVIEW_URLS[imageId] ?? defaultReminderUrl;
 }
 
 function getStatusTone(status: AppStatus): string {
@@ -1044,13 +1073,26 @@ function combineDateAndTime(dateKey: string, time: string): string | null {
 }
 
 function createRecordDraft(record: AppSnapshot['dailyRecords'][number]) {
-  return {
+  return normalizeRecordDraft({
     workStatus: record.workStatus,
     startTime: isoToTimeInput(record.workStartedAtIso),
     endTime: isoToTimeInput(record.workEndedAtIso),
     reminders: record.reminders,
     completed: record.completed,
     skipped: record.skipped
+  });
+}
+
+function normalizeRecordDraft(draft: RecordDraft): RecordDraft {
+  const reminders = normalizeDraftCount(String(draft.reminders));
+  const completed = Math.min(normalizeDraftCount(String(draft.completed)), reminders);
+  const skipped = Math.min(normalizeDraftCount(String(draft.skipped)), reminders - completed);
+
+  return {
+    ...draft,
+    reminders,
+    completed,
+    skipped
   };
 }
 

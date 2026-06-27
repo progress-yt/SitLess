@@ -8,9 +8,10 @@ describe('fallback daily poem', () => {
 });
 
 describe('default reminder images', () => {
-  it('ships with two selectable built-in images', () => {
-    expect(BUILT_IN_REMINDER_IMAGES).toHaveLength(2);
-    expect(new Set(BUILT_IN_REMINDER_IMAGES.map((image) => image.id)).size).toBe(2);
+  it('ships with selectable built-in images', () => {
+    expect(BUILT_IN_REMINDER_IMAGES).toHaveLength(4);
+    expect(new Set(BUILT_IN_REMINDER_IMAGES.map((image) => image.id)).size).toBe(4);
+    expect(BUILT_IN_REMINDER_IMAGES.map((image) => image.id)).toEqual(['desk', 'walk', 'photo-1', 'photo-2']);
   });
 
   it('uses the default built-in image when no custom image is selected', () => {

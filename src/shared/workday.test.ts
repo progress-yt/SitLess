@@ -16,6 +16,19 @@ describe('workday gate', () => {
     expect(gate.status).toBe('awaiting-work-start');
   });
 
+  it('shows lunch break instead of work confirmation during lunch', () => {
+    const settings = createDefaultSettings();
+    const gate = getWorkdayGateStatus(new Date('2026-06-05T12:30:00'), settings, {
+      status: 'not-started',
+      startedAtIso: null,
+      endedAtIso: null,
+      startPromptedAtIso: null
+    });
+
+    expect(gate.canRunReminders).toBe(false);
+    expect(gate.status).toBe('lunch-break');
+  });
+
   it('runs reminders after work is confirmed', () => {
     const settings = createDefaultSettings();
     const gate = getWorkdayGateStatus(new Date('2026-06-05T09:10:00'), settings, {

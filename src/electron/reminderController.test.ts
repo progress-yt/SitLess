@@ -53,6 +53,39 @@ describe('overtime end time', () => {
   });
 });
 
+describe('overtime auto end', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-10T18:30:00'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not reuse the active-mode idle reset threshold for auto clock-out', () => {
+    const stores = createControllerStores();
+    stores.settings.idleResetMinutes = 5;
+    stores.settings.autoEndIdleMinutes = 60;
+    const controller = createController(stores, () => 10 * 60);
+
+    controller.refresh();
+
+    expect(controller.getSnapshot().status).toBe('idle-reset');
+    expect(stores.daySessionStore.getToday().status).toBe('working');
+  });
+
+  it('ends the workday after the dedicated overtime idle threshold', () => {
+    const stores = createControllerStores();
+    stores.settings.autoEndIdleMinutes = 60;
+    const controller = createController(stores, () => 61 * 60);
+
+    controller.refresh();
+
+    expect(controller.getSnapshot().status).toBe('off-work');
+    expect(stores.daySessionStore.getToday().status).toBe('off-work');
+  });
+});
+
 // Pin time to a weekday within work hours so the schedule gate allows reminders.
 const FAKE_WEEKDAY = new Date('2026-06-10T10:00:00');
 
@@ -141,6 +174,39 @@ describe('reminder mode changes', () => {
   });
 });
 
+describe('snoozed reminder stats', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FAKE_WEEKDAY);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not count a snoozed re-alert as a new reminder, but still counts the outcome', () => {
+    const stores = createControllerStores();
+    const controller = createController(stores);
+
+    controller.refresh();
+    (controller as unknown as { cycleStartedAt: number | null }).cycleStartedAt = Date.now() - 46 * 60 * 1000;
+    controller.refresh();
+    expect(stores.statsStore.getToday().reminders).toBe(1);
+
+    controller.handleCountdownAction('snooze');
+    vi.setSystemTime(new Date(FAKE_WEEKDAY.getTime() + stores.settings.snoozeMinutes * 60 * 1000 + 1000));
+    controller.refresh();
+
+    expect(controller.getSnapshot().status).toBe('countdown');
+    expect(stores.statsStore.getToday().reminders).toBe(1);
+
+    controller.handleCountdownAction('skip');
+    expect(stores.statsStore.getToday()).toMatchObject({
+      reminders: 1,
+      skipped: 1
+    });
+  });
+});
+
 describe('snapshot record cache', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -172,6 +238,30 @@ describe('snapshot record cache', () => {
       reminders: 3,
       completed: 2,
       skipped: 1
+    });
+  });
+
+  it('clamps impossible manual record counts', () => {
+    const stores = createControllerStores();
+    const controller = createController(stores);
+    const dateKey = getDateKey(FAKE_WEEKDAY);
+
+    const snapshot = controller.updateDailyRecord({
+      dateKey,
+      workStatus: 'working',
+      workStartedAtIso: FAKE_WEEKDAY.toISOString(),
+      workEndedAtIso: null,
+      reminders: 2,
+      completed: 4,
+      skipped: 4
+    });
+
+    expect(snapshot.dailyRecords[0]).toMatchObject({
+      dateKey,
+      reminders: 2,
+      completed: 2,
+      skipped: 0,
+      completionRate: 1
     });
   });
 
@@ -246,7 +336,7 @@ describe('daily poem refresh', () => {
   });
 });
 
-function createController(stores: ReturnType<typeof createControllerStores>): ReminderController {
+function createController(stores: ReturnType<typeof createControllerStores>, getIdleSeconds = () => 0): ReminderController {
   return new ReminderController(
     stores.settingsStore,
     stores.statsStore,
@@ -254,7 +344,7 @@ function createController(stores: ReturnType<typeof createControllerStores>): Re
     stores.runtimeStateStore,
     stores.poemStore,
     {
-      getIdleSeconds: () => 0,
+      getIdleSeconds,
       showNotification: () => undefined,
       confirmWorkdayStart: async () => true,
       openCountdown: () => undefined,
@@ -329,11 +419,11 @@ function createControllerStores() {
         };
         return daySession;
       },
-      end: () => {
+      end: (date = new Date()) => {
         daySession = {
           ...daySession,
           status: 'off-work',
-          endedAtIso: new Date().toISOString()
+          endedAtIso: date.toISOString()
         };
         return daySession;
       },

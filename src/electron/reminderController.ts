@@ -64,6 +64,11 @@ interface ReminderControllerDeps {
 
 type RuntimePhase = 'running' | 'snoozed' | 'countdown' | 'fullscreen';
 
+interface ReminderTriggerOptions {
+  countReminder: boolean;
+  countOutcome: boolean;
+}
+
 export class ReminderController extends EventEmitter {
   private phase: RuntimePhase = 'running';
   private cycleStartedAt: number | null = null;
@@ -72,7 +77,7 @@ export class ReminderController extends EventEmitter {
   private countdownTimer: NodeJS.Timeout | null = null;
   private interval: NodeJS.Timeout | null = null;
   private workdayPromptInFlight = false;
-  private currentReminderCountsStats = true;
+  private currentReminderCountsOutcome = true;
   private snapshot: AppSnapshot;
   private imageRevision = 0;
   private lastPoemRefreshDateKey: string | null = null;
@@ -241,22 +246,26 @@ export class ReminderController extends EventEmitter {
   }
 
   testReminderFlow(): AppSnapshot {
-    this.triggerReminder(false);
+    this.triggerReminder({
+      countReminder: false,
+      countOutcome: false
+    });
     return this.snapshot;
   }
 
   updateDailyRecord(correction: DailyRecordCorrection): AppSnapshot {
+    const normalized = normalizeDailyRecordCorrection(correction);
     const session: DaySession = {
-      status: correction.workStatus,
-      startedAtIso: correction.workStartedAtIso,
-      endedAtIso: correction.workEndedAtIso,
+      status: normalized.workStatus,
+      startedAtIso: normalized.workStartedAtIso,
+      endedAtIso: normalized.workEndedAtIso,
       startPromptedAtIso: null
     };
-    this.daySessionStore.setDay(correction.dateKey, session);
-    this.statsStore.setDay(correction.dateKey, {
-      reminders: correction.reminders,
-      completed: correction.completed,
-      skipped: correction.skipped
+    this.daySessionStore.setDay(normalized.dateKey, session);
+    this.statsStore.setDay(normalized.dateKey, {
+      reminders: normalized.reminders,
+      completed: normalized.completed,
+      skipped: normalized.skipped
     });
     this.invalidateRecordsCache();
     this.tick();
@@ -287,7 +296,7 @@ export class ReminderController extends EventEmitter {
     }
 
     if (action === 'skip') {
-      if (this.currentReminderCountsStats) {
+      if (this.currentReminderCountsOutcome) {
         this.statsStore.increment('skipped');
         this.invalidateRecordsCache();
       }
@@ -303,7 +312,7 @@ export class ReminderController extends EventEmitter {
     }
 
     this.deps.closeFullscreen();
-    if (this.currentReminderCountsStats) {
+    if (this.currentReminderCountsOutcome) {
       this.statsStore.increment('completed');
       this.invalidateRecordsCache();
     }
@@ -369,7 +378,10 @@ export class ReminderController extends EventEmitter {
       }
 
       this.snoozeUntil = null;
-      this.triggerReminder(true);
+      this.triggerReminder({
+        countReminder: false,
+        countOutcome: this.currentReminderCountsOutcome
+      });
       return;
     }
 
@@ -383,20 +395,23 @@ export class ReminderController extends EventEmitter {
     this.cycleStartedAt = engineResult.cycleStartedAt;
 
     if (engineResult.action === 'trigger') {
-      this.triggerReminder(true);
+      this.triggerReminder({
+        countReminder: true,
+        countOutcome: true
+      });
       return;
     }
 
     this.emitSnapshot(this.buildSnapshot(now, engineResult.status, engineResult.remainingSeconds, idleSeconds));
   }
 
-  private triggerReminder(countStats: boolean): void {
+  private triggerReminder(options: ReminderTriggerOptions): void {
     if (this.phase === 'countdown' || this.phase === 'fullscreen') {
       return;
     }
 
-    this.currentReminderCountsStats = countStats;
-    if (countStats) {
+    this.currentReminderCountsOutcome = options.countOutcome;
+    if (options.countReminder) {
       this.statsStore.increment('reminders');
       this.invalidateRecordsCache();
     }
@@ -556,7 +571,7 @@ export class ReminderController extends EventEmitter {
       return false;
     }
 
-    if (idleSeconds < settings.idleResetMinutes * 60) {
+    if (idleSeconds < settings.autoEndIdleMinutes * 60) {
       return false;
     }
 
@@ -632,6 +647,23 @@ function getScheduledWorkEndDate(date: Date, settings: AppSettings): Date {
   }
 
   return endDate;
+}
+
+function normalizeDailyRecordCorrection(correction: DailyRecordCorrection): DailyRecordCorrection {
+  const reminders = normalizeRecordCount(correction.reminders);
+  const completed = Math.min(normalizeRecordCount(correction.completed), reminders);
+  const skipped = Math.min(normalizeRecordCount(correction.skipped), reminders - completed);
+
+  return {
+    ...correction,
+    reminders,
+    completed,
+    skipped
+  };
+}
+
+function normalizeRecordCount(value: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
 function formatTime(date: Date): string {

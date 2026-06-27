@@ -99,7 +99,7 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - The fixed interval reminder defaults to 45 minutes.
 - 上班确认提示只在有效工作时段内自动弹出，不在午休、下班后或周末自动打扰用户。
 - 超过配置下班时间后，如果用户仍有键鼠活动，则视为加班并继续提醒。
-- 加班期间如果无输入超过“无输入重置”配置，应用自动结束当天工作；记录的下班时间取配置下班时间和最后活跃时间中更晚的一个。
+- 加班期间如果无输入超过独立的“下班后空闲”配置，应用自动结束当天工作；记录的下班时间取配置下班时间和最后活跃时间中更晚的一个。
 - 如果倒计时或全屏提醒正在显示，加班自动下班不会直接关闭当前提醒，避免提醒状态突然消失。
 - Snooze defaults to 10 minutes.
 - Reminder escalation flow is: system notification -> topmost countdown window -> primary-display fullscreen image.
@@ -110,6 +110,7 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - 倒计时小窗需要为底部操作按钮保留明显且稳定的下边距，避免按钮贴近窗口底部。
 - “开始休息” immediately opens fullscreen reminder mode.
 - “稍后提醒” delays the reminder by the configured snooze duration.
+- “稍后提醒”到期后的再次弹窗仍属于同一次提醒处理，不新增提醒次数；最终“已起身”或“跳过本次”计入该次提醒的处理结果。
 - “跳过本次” increments today’s skip count and restarts the reminder cycle.
 - Countdown timeout opens fullscreen reminder mode.
 - Fullscreen reminder mode opens only on the primary display.
@@ -127,6 +128,7 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - Settings include reminder mode, work time, lunch time, reminder thresholds, snooze, current image, sound, startup, and test reminder flow.
 - Settings are stored in local JSON.
 - Statistics are stored in local JSON grouped by date.
+- 手动修正历史记录时，完成和跳过次数不能超过提醒次数；应用会规范化不可能的数据。
 - v1 UI displays only today’s statistics: reminder count, completed rest count, and skipped count.
 - Historical statistics are still persisted by date to avoid future migration when trend views are added.
 

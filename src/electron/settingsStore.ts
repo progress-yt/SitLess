@@ -84,6 +84,7 @@ function normalizeSettings(value: unknown): AppSettings {
     activeThresholdMinutes: clampNumber(Number(merged.activeThresholdMinutes), 1, 240),
     fixedIntervalMinutes: clampNumber(Number(merged.fixedIntervalMinutes), 1, 240),
     idleResetMinutes: clampNumber(Number(merged.idleResetMinutes), 1, 60),
+    autoEndIdleMinutes: clampNumber(Number(merged.autoEndIdleMinutes), 15, 240),
     snoozeMinutes: clampNumber(Number(merged.snoozeMinutes), 1, 240),
     countdownSeconds: clampNumber(Number(merged.countdownSeconds), 3, 120),
     soundEnabled: Boolean(merged.soundEnabled),
