@@ -62,22 +62,33 @@ export const DEFAULT_SETTINGS: AppSettings = {
   activeThresholdMinutes: 45,
   fixedIntervalMinutes: 45,
   idleResetMinutes: 5,
-  autoEndIdleMinutes: 60,
+  overtimeAutoEndMinutes: 60,
   snoozeMinutes: 10,
   countdownSeconds: 10,
+  minimumRestSeconds: 60,
+  reminderStrength: 'standard',
+  workdayPromptSnoozeMinutes: 15,
   soundEnabled: true,
   launchAtStartup: false,
   hasSeenStartupPrompt: false,
-  builtInReminderImageId: DEFAULT_BUILT_IN_REMINDER_IMAGE_ID,
   customReminderImagePath: null,
+  builtInReminderImageId: DEFAULT_BUILT_IN_REMINDER_IMAGE_ID,
   restPromptText: DEFAULT_REST_PROMPT_OPTIONS[0],
+  restStartButtonText: '起身休息一会儿',
+  restCompleteButtonText: '我已回来',
+  restInterruptButtonText: '临时返回工作',
   updatedAtIso: new Date(0).toISOString()
 };
 
 export const EMPTY_DAILY_STATS: DailyStats = {
   reminders: 0,
   completed: 0,
-  skipped: 0
+  skipped: 0,
+  snoozed: 0,
+  interrupted: 0,
+  restSeconds: 0,
+  longestFocusSeconds: 0,
+  currentCompletionStreak: 0
 };
 
 export const EMPTY_DAY_SESSION: DaySession = {
@@ -167,7 +178,8 @@ export function createEmptyStatsSummary(
     startDateKey,
     endDateKey,
     activeDays: 0,
-    completionRate: 0
+    completionRate: 0,
+    currentCompletionStreak: 0
   };
 }
 

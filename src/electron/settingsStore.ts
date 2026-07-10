@@ -1,8 +1,8 @@
 import { app } from 'electron';
 import { join } from 'node:path';
-import { BUILT_IN_REMINDER_IMAGES, DEFAULT_BUILT_IN_REMINDER_IMAGE_ID, DEFAULT_REST_PROMPT_OPTIONS, createDefaultSettings } from '../shared/defaults';
-import type { AppSettings, BuiltInReminderImageId } from '../shared/types';
-import { clampNumber } from '../shared/schedule';
+import { createDefaultSettings } from '../shared/defaults';
+import { cloneSettings, normalizeSettings } from '../shared/persistence';
+import type { AppSettings } from '../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 
 export class SettingsStore {
@@ -49,99 +49,4 @@ export class SettingsStore {
   private persist(): void {
     writeJsonFile(this.filePath, this.settings);
   }
-}
-
-function normalizeSettings(value: unknown): AppSettings {
-  const defaults = createDefaultSettings();
-  const object = isRecord(value) ? value : {};
-  const workSchedule = isRecord(object.workSchedule) ? object.workSchedule : {};
-  const lunch = isRecord(workSchedule.lunch) ? workSchedule.lunch : {};
-  const merged: AppSettings = {
-    ...defaults,
-    ...object,
-    workSchedule: {
-      ...defaults.workSchedule,
-      ...workSchedule,
-      lunch: {
-        ...defaults.workSchedule.lunch,
-        ...lunch
-      }
-    }
-  };
-
-  return {
-    ...merged,
-    mode: merged.mode === 'fixed' ? 'fixed' : 'active',
-    workSchedule: {
-      start: normalizeTimeString(merged.workSchedule.start, defaults.workSchedule.start),
-      end: normalizeTimeString(merged.workSchedule.end, defaults.workSchedule.end),
-      lunch: {
-        enabled: Boolean(merged.workSchedule.lunch.enabled),
-        start: normalizeTimeString(merged.workSchedule.lunch.start, defaults.workSchedule.lunch.start),
-        end: normalizeTimeString(merged.workSchedule.lunch.end, defaults.workSchedule.lunch.end)
-      }
-    },
-    activeThresholdMinutes: clampNumber(Number(merged.activeThresholdMinutes), 1, 240),
-    fixedIntervalMinutes: clampNumber(Number(merged.fixedIntervalMinutes), 1, 240),
-    idleResetMinutes: clampNumber(Number(merged.idleResetMinutes), 1, 60),
-    autoEndIdleMinutes: clampNumber(Number(merged.autoEndIdleMinutes), 15, 240),
-    snoozeMinutes: clampNumber(Number(merged.snoozeMinutes), 1, 240),
-    countdownSeconds: clampNumber(Number(merged.countdownSeconds), 3, 120),
-    soundEnabled: Boolean(merged.soundEnabled),
-    launchAtStartup: Boolean(merged.launchAtStartup),
-    hasSeenStartupPrompt: Boolean(merged.hasSeenStartupPrompt),
-    customReminderImagePath: typeof merged.customReminderImagePath === 'string' && merged.customReminderImagePath ? merged.customReminderImagePath : null,
-    builtInReminderImageId: normalizeBuiltInReminderImageId(merged.builtInReminderImageId),
-    restPromptText: normalizeRestPromptText(merged.restPromptText)
-  };
-}
-
-function cloneSettings(settings: AppSettings): AppSettings {
-  return {
-    ...settings,
-    workSchedule: {
-      ...settings.workSchedule,
-      lunch: { ...settings.workSchedule.lunch }
-    }
-  };
-}
-
-const REST_PROMPT_MAX_LENGTH = 50;
-
-function normalizeRestPromptText(value: unknown): string {
-  const normalized = typeof value === 'string' ? value.trim() : '';
-  if (!normalized) {
-    return DEFAULT_REST_PROMPT_OPTIONS[0];
-  }
-
-  return normalized.slice(0, REST_PROMPT_MAX_LENGTH);
-}
-
-function normalizeBuiltInReminderImageId(value: unknown): BuiltInReminderImageId {
-  return BUILT_IN_REMINDER_IMAGES.some((image) => image.id === value)
-    ? value as BuiltInReminderImageId
-    : DEFAULT_BUILT_IN_REMINDER_IMAGE_ID;
-}
-
-function normalizeTimeString(value: unknown, fallback: string): string {
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-
-  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
-  if (!match) {
-    return fallback;
-  }
-
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-    return fallback;
-  }
-
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }

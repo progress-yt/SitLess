@@ -29,7 +29,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -68,12 +69,14 @@ button:disabled {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 2px solid #2f8278;
   outline-offset: 2px;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-height: 38px;
   padding: 0 10px;
@@ -517,6 +520,18 @@ input[type="checkbox"] {
   gap: 10px;
 }
 
+.nudge-text,
+.warning-text {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(169, 92, 62, 0.26);
+  border-radius: 8px;
+  color: #7a3f28;
+  background: rgba(255, 244, 230, 0.72);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .primary-button {
   color: #ffffff;
   border-color: #2f8278;
@@ -552,7 +567,7 @@ input[type="checkbox"] {
 
 .metric-row strong {
   font-variant-numeric: tabular-nums;
-  font-size: 28px;
+  font-size: 24px;
 }
 
 .side-context {
@@ -976,11 +991,18 @@ input[type="checkbox"] {
   line-height: 1.18;
 }
 
-.fullscreen-reminder button {
+.fullscreen-actions {
   position: absolute;
   right: 34px;
   bottom: 34px;
-  min-width: 148px;
+  display: grid;
+  gap: 10px;
+  justify-items: stretch;
+  min-width: 188px;
+}
+
+.fullscreen-actions button {
+  min-width: 188px;
   min-height: 48px;
   color: #ffffff;
   border-color: rgba(255, 255, 255, 0.36);
@@ -988,9 +1010,25 @@ input[type="checkbox"] {
   backdrop-filter: blur(14px);
 }
 
-.fullscreen-reminder button:hover {
+.fullscreen-actions button:hover:not(:disabled) {
   border-color: rgba(255, 255, 255, 0.62);
   background: rgba(31, 35, 33, 0.9);
+}
+
+.fullscreen-actions button:disabled {
+  cursor: default;
+  opacity: 0.82;
+}
+
+.fullscreen-primary-action {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.fullscreen-secondary-action {
+  min-height: 40px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(31, 35, 33, 0.46);
 }
 
 @media (max-width: 900px) {
@@ -1045,13 +1083,23 @@ input[type="checkbox"] {
 
   .fullscreen-caption {
     right: 18px;
-    bottom: 88px;
+    bottom: 140px;
     left: 18px;
     max-width: none;
   }
 
   .fullscreen-caption strong {
     font-size: 22px;
+  }
+
+  .fullscreen-actions {
+    right: 18px;
+    bottom: 18px;
+    left: 18px;
+  }
+
+  .fullscreen-actions button {
+    width: 100%;
   }
 }
 

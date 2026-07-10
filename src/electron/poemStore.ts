@@ -5,6 +5,8 @@ import { getDateKey } from '../shared/schedule';
 import type { DailyPoem } from '../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 
+const POEM_REQUEST_TIMEOUT_MS = 5_000;
+
 interface PoemFile {
   token: string | null;
   poem: DailyPoem | null;
@@ -104,7 +106,7 @@ export class PoemStore {
       return this.state.token;
     }
 
-    const response = await net.fetch('https://v2.jinrishici.com/token');
+    const response = await fetchWithTimeout('https://v2.jinrishici.com/token');
     if (!response.ok) {
       throw new Error(`Token request failed with HTTP ${response.status}`);
     }
@@ -136,7 +138,7 @@ class TokenRejectedError extends Error {
 }
 
 async function fetchDailyPoem(token: string, dateKey: string): Promise<DailyPoem> {
-  const response = await net.fetch('https://v2.jinrishici.com/sentence', {
+  const response = await fetchWithTimeout('https://v2.jinrishici.com/sentence', {
     headers: {
       'X-User-Token': token
     }
@@ -164,6 +166,23 @@ async function fetchDailyPoem(token: string, dateKey: string): Promise<DailyPoem
     title: json.data?.origin?.title?.trim() || null,
     source: 'jinrishici'
   };
+}
+
+async function fetchWithTimeout(
+  input: Parameters<typeof net.fetch>[0],
+  init?: Parameters<typeof net.fetch>[1]
+): ReturnType<typeof net.fetch> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), POEM_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await net.fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function readJsonResponse<T>(response: Awaited<ReturnType<typeof net.fetch>>): Promise<T | null> {

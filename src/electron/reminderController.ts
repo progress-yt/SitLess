@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { getDateKey, getRecentDateKeys, getScheduleStatus, parseTimeToMinutes, secondsUntil } from '../shared/schedule';
 import { evaluateReminderEngine } from '../shared/reminderEngine';
 import { getWorkdayGateStatus } from '../shared/workday';
+import { systemReminderClock, type ReminderClock, type ReminderTimerHandle } from './reminderClock';
 import type {
   AppSettings,
   AppSnapshot,
@@ -13,6 +14,7 @@ import type {
   DailyRecordCorrection,
   DailyStats,
   DaySession,
+  FullscreenRestState,
   ReminderRuntimeState,
   StatsOverview
 } from '../shared/types';
@@ -28,7 +30,10 @@ interface ReminderStatsStore {
   getOverview: (date?: Date) => StatsOverview;
   getRecentDays: (limit?: number, date?: Date) => Record<string, DailyStats>;
   setDay: (dateKey: string, stats: DailyStats) => DailyStats;
-  increment: (field: 'reminders' | 'completed' | 'skipped', date?: Date) => DailyStats;
+  incrementReminder: (date?: Date) => DailyStats;
+  recordOutcome: (outcome: 'completed' | 'skipped' | 'snoozed' | 'interrupted', date?: Date) => DailyStats;
+  addRestSeconds: (seconds: number, date?: Date) => DailyStats;
+  recordFocusSeconds: (seconds: number, date?: Date) => DailyStats;
 }
 
 interface ReminderDaySessionStore {
@@ -42,9 +47,9 @@ interface ReminderDaySessionStore {
 
 interface ReminderRuntimeStateStore {
   get: (date?: Date) => ReminderRuntimeState;
-  setPauseUntil: (date: Date | null) => ReminderRuntimeState;
+  setPauseUntil: (date: Date | null, currentDate?: Date) => ReminderRuntimeState;
   muteToday: (date?: Date) => ReminderRuntimeState;
-  clearMute: () => ReminderRuntimeState;
+  clearMute: (date?: Date) => ReminderRuntimeState;
 }
 
 interface ReminderPoemStore {
@@ -55,14 +60,16 @@ interface ReminderPoemStore {
 interface ReminderControllerDeps {
   getIdleSeconds: () => number;
   showNotification: () => void;
-  confirmWorkdayStart: () => Promise<boolean>;
+  confirmWorkdayStart: () => Promise<WorkdayStartChoice>;
   openCountdown: () => void;
   closeCountdown: () => void;
   openFullscreen: () => void;
   closeFullscreen: () => void;
+  isImageFallbackActive: () => boolean;
 }
 
 type RuntimePhase = 'running' | 'snoozed' | 'countdown' | 'fullscreen';
+type WorkdayStartChoice = 'start' | 'later' | 'mute-today';
 
 interface ReminderTriggerOptions {
   countReminder: boolean;
@@ -73,9 +80,12 @@ export class ReminderController extends EventEmitter {
   private phase: RuntimePhase = 'running';
   private cycleStartedAt: number | null = null;
   private snoozeUntil: number | null = null;
+  private fullscreenRestStartedAt: number | null = null;
+  private workdayPromptSnoozeUntil: number | null = null;
+  private consecutiveSnoozes = 0;
   private lastWithinSchedule = false;
-  private countdownTimer: NodeJS.Timeout | null = null;
-  private interval: NodeJS.Timeout | null = null;
+  private countdownTimer: ReminderTimerHandle | null = null;
+  private interval: ReminderTimerHandle | null = null;
   private workdayPromptInFlight = false;
   private currentReminderCountsOutcome = true;
   private snapshot: AppSnapshot;
@@ -95,20 +105,22 @@ export class ReminderController extends EventEmitter {
     private readonly daySessionStore: ReminderDaySessionStore,
     private readonly runtimeStateStore: ReminderRuntimeStateStore,
     private readonly poemStore: ReminderPoemStore,
-    private readonly deps: ReminderControllerDeps
+    private readonly deps: ReminderControllerDeps,
+    private readonly clock: ReminderClock = systemReminderClock
   ) {
     super();
-    this.snapshot = this.buildSnapshot(new Date(), 'outside-schedule', null, 0);
+    this.snapshot = this.buildSnapshot(this.clock.now(), 'outside-schedule', null, 0);
   }
 
   start(): void {
     this.tick();
-    this.interval = setInterval(() => this.tick(), 1000);
+    this.interval = this.clock.setInterval(() => this.tick(), 1000);
   }
 
   stop(): void {
+    this.recordCurrentFocus(this.clock.now());
     if (this.interval) {
-      clearInterval(this.interval);
+      this.clock.clearInterval(this.interval);
       this.interval = null;
     }
 
@@ -124,13 +136,16 @@ export class ReminderController extends EventEmitter {
   }
 
   handleSettingsChange(previous: AppSettings, next: AppSettings): AppSnapshot {
+    const now = this.clock.now();
     if (previous.mode !== next.mode) {
+      this.recordCurrentFocus(now);
       this.clearCountdownTimer();
       this.deps.closeCountdown();
       this.deps.closeFullscreen();
       this.phase = 'running';
       this.snoozeUntil = null;
-      this.resetCycle(new Date());
+      this.fullscreenRestStartedAt = null;
+      this.resetCycle(now);
     }
 
     this.tick();
@@ -143,7 +158,7 @@ export class ReminderController extends EventEmitter {
   }
 
   async refreshDailyPoem(): Promise<DailyPoemRefreshResult> {
-    const now = new Date();
+    const now = this.clock.now();
     if (this.poemRefreshInFlight || this.manualPoemRefreshInFlight) {
       const snapshot = this.buildSnapshot(now, this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds());
       this.emitSnapshot(snapshot);
@@ -180,7 +195,7 @@ export class ReminderController extends EventEmitter {
       this.manualPoemRefreshInFlight = false;
     }
 
-    const snapshot = this.buildSnapshot(new Date(), this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds());
+    const snapshot = this.buildSnapshot(this.clock.now(), this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds());
     this.emitSnapshot(snapshot);
     return {
       snapshot,
@@ -190,57 +205,81 @@ export class ReminderController extends EventEmitter {
   }
 
   pauseForHour(): AppSnapshot {
-    this.clearCountdownTimer();
-    this.deps.closeCountdown();
-    this.deps.closeFullscreen();
-    this.phase = 'running';
-    this.runtimeStateStore.setPauseUntil(new Date(Date.now() + 60 * 60 * 1000));
-    this.resetCycle(new Date());
-    this.tick();
-    return this.snapshot;
+    return this.focusForMinutes(60);
   }
 
-  resumeReminders(): AppSnapshot {
+  focusForMinutes(minutes: number): AppSnapshot {
+    const now = this.clock.now();
+    this.recordCurrentFocus(now);
     this.clearCountdownTimer();
     this.deps.closeCountdown();
     this.deps.closeFullscreen();
     this.phase = 'running';
     this.snoozeUntil = null;
-    this.runtimeStateStore.setPauseUntil(null);
-    this.resetCycle(new Date());
+    this.fullscreenRestStartedAt = null;
+    const durationMinutes = Math.max(1, Math.floor(minutes));
+    this.runtimeStateStore.setPauseUntil(new Date(now.getTime() + durationMinutes * 60 * 1000), now);
+    this.resetCycle(now);
+    this.tick();
+    return this.snapshot;
+  }
+
+  resumeReminders(): AppSnapshot {
+    const now = this.clock.now();
+    this.clearCountdownTimer();
+    this.deps.closeCountdown();
+    this.deps.closeFullscreen();
+    this.phase = 'running';
+    this.snoozeUntil = null;
+    this.fullscreenRestStartedAt = null;
+    this.consecutiveSnoozes = 0;
+    this.runtimeStateStore.setPauseUntil(null, now);
+    this.resetCycle(now);
     this.tick();
     return this.snapshot;
   }
 
   muteToday(): AppSnapshot {
+    const now = this.clock.now();
+    this.recordCurrentFocus(now);
     this.clearCountdownTimer();
     this.deps.closeCountdown();
     this.deps.closeFullscreen();
     this.phase = 'running';
-    this.runtimeStateStore.muteToday();
-    this.resetCycle(new Date());
+    this.fullscreenRestStartedAt = null;
+    this.consecutiveSnoozes = 0;
+    this.runtimeStateStore.muteToday(now);
+    this.resetCycle(now);
     this.tick();
     return this.snapshot;
   }
 
   startWorkday(): AppSnapshot {
-    this.daySessionStore.start();
-    this.runtimeStateStore.clearMute();
+    const now = this.clock.now();
+    this.daySessionStore.start(now);
+    this.runtimeStateStore.clearMute(now);
     this.invalidateRecordsCache();
     this.phase = 'running';
-    this.resetCycle(new Date());
+    this.fullscreenRestStartedAt = null;
+    this.workdayPromptSnoozeUntil = null;
+    this.consecutiveSnoozes = 0;
+    this.resetCycle(now);
     this.tick();
     return this.snapshot;
   }
 
   endWorkday(): AppSnapshot {
+    const now = this.clock.now();
+    this.recordCurrentFocus(now);
     this.clearCountdownTimer();
     this.deps.closeCountdown();
     this.deps.closeFullscreen();
-    this.daySessionStore.end();
+    this.daySessionStore.end(now);
     this.invalidateRecordsCache();
     this.phase = 'running';
-    this.resetCycle(new Date());
+    this.fullscreenRestStartedAt = null;
+    this.consecutiveSnoozes = 0;
+    this.resetCycle(now);
     this.tick();
     return this.snapshot;
   }
@@ -254,7 +293,9 @@ export class ReminderController extends EventEmitter {
   }
 
   updateDailyRecord(correction: DailyRecordCorrection): AppSnapshot {
+    const now = this.clock.now();
     const normalized = normalizeDailyRecordCorrection(correction);
+    const recordDate = new Date(`${normalized.dateKey}T12:00:00`);
     const session: DaySession = {
       status: normalized.workStatus,
       startedAtIso: normalized.workStartedAtIso,
@@ -265,7 +306,12 @@ export class ReminderController extends EventEmitter {
     this.statsStore.setDay(normalized.dateKey, {
       reminders: normalized.reminders,
       completed: normalized.completed,
-      skipped: normalized.skipped
+      skipped: normalized.skipped,
+      snoozed: normalized.snoozed,
+      interrupted: normalized.interrupted,
+      restSeconds: normalized.restSeconds,
+      longestFocusSeconds: normalized.longestFocusSeconds,
+      currentCompletionStreak: this.statsStore.getToday(recordDate).currentCompletionStreak
     });
     this.invalidateRecordsCache();
     this.tick();
@@ -273,35 +319,37 @@ export class ReminderController extends EventEmitter {
   }
 
   handleCountdownAction(action: CountdownAction): void {
-    if (this.phase !== 'countdown' && action !== 'timeout') {
+    if (this.phase !== 'countdown') {
       return;
     }
 
     this.clearCountdownTimer();
     this.deps.closeCountdown();
 
+    if (action === 'timeout' && this.settingsStore.get().reminderStrength === 'gentle') {
+      this.snoozeReminder();
+      return;
+    }
+
     if (action === 'start-rest' || action === 'timeout') {
-      this.phase = 'fullscreen';
-      this.deps.openFullscreen();
-      this.emitSnapshot(this.buildSnapshot(new Date(), 'fullscreen', null, this.deps.getIdleSeconds()));
+      this.openFullscreenReminder(action === 'start-rest');
       return;
     }
 
     if (action === 'snooze') {
-      const settings = this.settingsStore.get();
-      this.phase = 'snoozed';
-      this.snoozeUntil = Date.now() + settings.snoozeMinutes * 60 * 1000;
-      this.tick();
+      this.snoozeReminder();
       return;
     }
 
     if (action === 'skip') {
+      const now = this.clock.now();
       if (this.currentReminderCountsOutcome) {
-        this.statsStore.increment('skipped');
+        this.statsStore.recordOutcome('skipped', now);
         this.invalidateRecordsCache();
+        this.consecutiveSnoozes = 0;
       }
       this.phase = 'running';
-      this.resetCycle(new Date());
+      this.resetCycle(now);
       this.tick();
     }
   }
@@ -311,18 +359,57 @@ export class ReminderController extends EventEmitter {
       return;
     }
 
+    const now = this.clock.now();
+    if (!this.canCompleteFullscreenRest(now)) {
+      this.emitSnapshot(this.buildSnapshot(now, 'fullscreen', null, this.deps.getIdleSeconds()));
+      return;
+    }
+
     this.deps.closeFullscreen();
     if (this.currentReminderCountsOutcome) {
-      this.statsStore.increment('completed');
+      this.statsStore.recordOutcome('completed', now);
+      this.statsStore.addRestSeconds(this.getRestDurationSeconds(now), now);
       this.invalidateRecordsCache();
+      this.consecutiveSnoozes = 0;
     }
     this.phase = 'running';
-    this.resetCycle(new Date());
+    this.fullscreenRestStartedAt = null;
+    this.resetCycle(now);
+    this.tick();
+  }
+
+  startRest(): void {
+    if (this.phase !== 'fullscreen') {
+      return;
+    }
+
+    if (this.fullscreenRestStartedAt === null) {
+      this.fullscreenRestStartedAt = this.clock.now().getTime();
+    }
+    this.tick();
+  }
+
+  interruptRest(): void {
+    if (this.phase !== 'fullscreen') {
+      return;
+    }
+
+    const now = this.clock.now();
+    const settings = this.settingsStore.get();
+    this.deps.closeFullscreen();
+    if (this.currentReminderCountsOutcome) {
+      this.statsStore.recordOutcome('interrupted', now);
+      this.invalidateRecordsCache();
+      this.consecutiveSnoozes += 1;
+    }
+    this.fullscreenRestStartedAt = null;
+    this.phase = 'snoozed';
+    this.snoozeUntil = now.getTime() + settings.snoozeMinutes * 60 * 1000;
     this.tick();
   }
 
   private tick(): void {
-    const now = new Date();
+    const now = this.clock.now();
     const settings = this.settingsStore.get();
     const idleSeconds = this.deps.getIdleSeconds();
     const runtimeState = this.runtimeStateStore.get(now);
@@ -345,7 +432,13 @@ export class ReminderController extends EventEmitter {
 
     const daySession = this.daySessionStore.getToday(now);
     const workdayGate = getWorkdayGateStatus(now, settings, daySession);
+    if (runtimeState.mutedDateKey === getDateKey(now) && workdayGate.status !== 'outside-schedule') {
+      this.emitSnapshot(this.buildSnapshot(now, 'muted-today', null, idleSeconds));
+      return;
+    }
+
     if (!workdayGate.canRunReminders) {
+      this.recordCurrentFocus(now);
       this.lastWithinSchedule = false;
       this.cycleStartedAt = null;
       this.emitSnapshot(this.buildSnapshot(now, workdayGate.status as AppStatus, null, idleSeconds));
@@ -355,11 +448,6 @@ export class ReminderController extends EventEmitter {
     if (!this.lastWithinSchedule) {
       this.resetCycle(now);
       this.lastWithinSchedule = true;
-    }
-
-    if (runtimeState.mutedDateKey === getDateKey(now)) {
-      this.emitSnapshot(this.buildSnapshot(now, 'muted-today', null, idleSeconds));
-      return;
     }
 
     if (runtimeState.pauseUntilIso) {
@@ -392,6 +480,10 @@ export class ReminderController extends EventEmitter {
       settings
     });
 
+    if (engineResult.action === 'emit' && engineResult.status === 'idle-reset' && this.cycleStartedAt !== null) {
+      this.recordCurrentFocus(now, idleSeconds);
+    }
+
     this.cycleStartedAt = engineResult.cycleStartedAt;
 
     if (engineResult.action === 'trigger') {
@@ -410,20 +502,49 @@ export class ReminderController extends EventEmitter {
       return;
     }
 
+    const now = this.clock.now();
     this.currentReminderCountsOutcome = options.countOutcome;
+    this.fullscreenRestStartedAt = null;
     if (options.countReminder) {
-      this.statsStore.increment('reminders');
+      this.recordCurrentFocus(now);
+      this.statsStore.incrementReminder(now);
       this.invalidateRecordsCache();
     }
 
-    this.phase = 'countdown';
     this.deps.showNotification();
+    if (this.settingsStore.get().reminderStrength === 'strong') {
+      this.openFullscreenReminder(false);
+      return;
+    }
+
+    this.phase = 'countdown';
     this.deps.openCountdown();
     this.clearCountdownTimer();
-    this.countdownTimer = setTimeout(() => {
+    this.countdownTimer = this.clock.setTimeout(() => {
       this.handleCountdownAction('timeout');
     }, this.settingsStore.get().countdownSeconds * 1000);
-    this.emitSnapshot(this.buildSnapshot(new Date(), 'countdown', null, this.deps.getIdleSeconds()));
+    this.emitSnapshot(this.buildSnapshot(now, 'countdown', null, this.deps.getIdleSeconds()));
+  }
+
+  private snoozeReminder(): void {
+    const now = this.clock.now();
+    const settings = this.settingsStore.get();
+    if (this.currentReminderCountsOutcome) {
+      this.statsStore.recordOutcome('snoozed', now);
+      this.invalidateRecordsCache();
+      this.consecutiveSnoozes += 1;
+    }
+    this.phase = 'snoozed';
+    this.snoozeUntil = now.getTime() + settings.snoozeMinutes * 60 * 1000;
+    this.tick();
+  }
+
+  private openFullscreenReminder(startRest: boolean): void {
+    const now = this.clock.now();
+    this.phase = 'fullscreen';
+    this.fullscreenRestStartedAt = startRest ? now.getTime() : null;
+    this.deps.openFullscreen();
+    this.emitSnapshot(this.buildSnapshot(now, 'fullscreen', null, this.deps.getIdleSeconds()));
   }
 
   private maybePromptWorkdayStart(now: Date): void {
@@ -432,6 +553,10 @@ export class ReminderController extends EventEmitter {
     }
 
     if (this.workdayPromptInFlight) {
+      return;
+    }
+
+    if (this.workdayPromptSnoozeUntil && this.workdayPromptSnoozeUntil > now.getTime()) {
       return;
     }
 
@@ -446,17 +571,32 @@ export class ReminderController extends EventEmitter {
     }
 
     this.workdayPromptInFlight = true;
-    this.daySessionStore.markStartPrompted(now);
     void this.deps.confirmWorkdayStart()
-      .then((confirmed) => {
-        if (confirmed) {
+      .then((choice) => {
+        const resolvedAt = this.clock.now();
+        if (choice === 'start') {
           this.startWorkday();
-        } else {
-          this.tick();
+          return;
         }
+
+        if (choice === 'mute-today') {
+          this.daySessionStore.markStartPrompted(resolvedAt);
+          this.runtimeStateStore.muteToday(resolvedAt);
+          this.tick();
+          return;
+        }
+
+        this.workdayPromptSnoozeUntil = resolvedAt.getTime() + this.settingsStore.get().workdayPromptSnoozeMinutes * 60 * 1000;
+        this.tick();
+      })
+      .catch(() => {
+        this.workdayPromptSnoozeUntil = this.clock.now().getTime() + this.settingsStore.get().workdayPromptSnoozeMinutes * 60 * 1000;
       })
       .finally(() => {
         this.workdayPromptInFlight = false;
+        if (this.workdayPromptSnoozeUntil) {
+          this.tick();
+        }
       });
   }
 
@@ -471,7 +611,7 @@ export class ReminderController extends EventEmitter {
     void this.poemStore.refreshToday(now)
       .finally(() => {
         this.poemRefreshInFlight = false;
-        this.emitSnapshot(this.buildSnapshot(new Date(), this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds()));
+        this.emitSnapshot(this.buildSnapshot(this.clock.now(), this.snapshot.status, this.snapshot.remainingSeconds, this.deps.getIdleSeconds()));
       });
   }
 
@@ -479,9 +619,24 @@ export class ReminderController extends EventEmitter {
     this.cycleStartedAt = now.getTime();
   }
 
+  private recordCurrentFocus(now: Date, idleSeconds = 0): void {
+    if (this.phase !== 'running' || this.snapshot.status !== 'counting' || this.cycleStartedAt === null) {
+      return;
+    }
+
+    const focusEndedAt = Math.max(this.cycleStartedAt, now.getTime() - Math.max(0, idleSeconds) * 1000);
+    const focusSeconds = Math.floor((focusEndedAt - this.cycleStartedAt) / 1000);
+    this.cycleStartedAt = null;
+
+    if (focusSeconds > 0) {
+      this.statsStore.recordFocusSeconds(focusSeconds, new Date(focusEndedAt));
+      this.invalidateRecordsCache();
+    }
+  }
+
   private clearCountdownTimer(): void {
     if (this.countdownTimer) {
-      clearTimeout(this.countdownTimer);
+      this.clock.clearTimeout(this.countdownTimer);
       this.countdownTimer = null;
     }
   }
@@ -492,6 +647,7 @@ export class ReminderController extends EventEmitter {
     const daySession = this.daySessionStore.getToday(now);
     const workdayGate = getWorkdayGateStatus(now, settings, daySession);
     const runtimeState = this.runtimeStateStore.get(now);
+    const isOvertime = daySession.status === 'working' && schedule.reason === 'after-work';
     const nextReminderAtIso =
       status === 'counting' && remainingSeconds !== null
         ? new Date(now.getTime() + remainingSeconds * 1000).toISOString()
@@ -523,12 +679,50 @@ export class ReminderController extends EventEmitter {
       nextReminderAtIso,
       pauseUntilIso: runtimeState.pauseUntilIso,
       mutedToday: runtimeState.mutedDateKey === todayDateKey,
+      isOvertime,
+      overtimeAutoEndSeconds: isOvertime ? Math.max(0, settings.overtimeAutoEndMinutes * 60 - idleSeconds) : null,
+      consecutiveSnoozes: this.consecutiveSnoozes,
+      currentCompletionStreak: this.statsStore.getToday(now).currentCompletionStreak,
+      imageFallbackActive: this.deps.isImageFallbackActive(),
       daySession,
       dailyPoem: this.poemStore.getToday(now),
       dailyPoemRefresh: this.getDailyPoemRefreshState(now),
+      fullscreenRest: status === 'fullscreen' ? this.getFullscreenRestState(now, settings) : null,
       idleSeconds,
       imageRevision: this.imageRevision
     };
+  }
+
+  private getFullscreenRestState(now: Date, settings: AppSettings): FullscreenRestState {
+    if (this.fullscreenRestStartedAt === null) {
+      return {
+        phase: 'prompt' as const,
+        startedAtIso: null,
+        remainingSeconds: settings.minimumRestSeconds,
+        minimumRestSeconds: settings.minimumRestSeconds,
+        canComplete: false
+      };
+    }
+
+    const remainingSeconds = secondsUntil(now, this.fullscreenRestStartedAt + settings.minimumRestSeconds * 1000);
+    return {
+      phase: remainingSeconds > 0 ? 'resting' as const : 'ready' as const,
+      startedAtIso: new Date(this.fullscreenRestStartedAt).toISOString(),
+      remainingSeconds,
+      minimumRestSeconds: settings.minimumRestSeconds,
+      canComplete: remainingSeconds === 0
+    };
+  }
+
+  private canCompleteFullscreenRest(now: Date): boolean {
+    const settings = this.settingsStore.get();
+    return this.fullscreenRestStartedAt !== null && this.getFullscreenRestState(now, settings).canComplete;
+  }
+
+  private getRestDurationSeconds(now: Date): number {
+    return this.fullscreenRestStartedAt === null
+      ? 0
+      : Math.max(0, Math.floor((now.getTime() - this.fullscreenRestStartedAt) / 1000));
   }
 
   private getDailyPoemRefreshState(now: Date) {
@@ -571,7 +765,7 @@ export class ReminderController extends EventEmitter {
       return false;
     }
 
-    if (idleSeconds < settings.autoEndIdleMinutes * 60) {
+    if (idleSeconds < settings.overtimeAutoEndMinutes * 60) {
       return false;
     }
 
@@ -580,8 +774,10 @@ export class ReminderController extends EventEmitter {
     this.deps.closeFullscreen();
     this.phase = 'running';
     this.snoozeUntil = null;
+    this.fullscreenRestStartedAt = null;
 
     const endedAt = getOvertimeEndDate(now, settings, idleSeconds);
+    this.recordCurrentFocus(endedAt);
     this.daySessionStore.end(endedAt);
     this.invalidateRecordsCache();
     this.resetCycle(now);
@@ -600,7 +796,16 @@ export class ReminderController extends EventEmitter {
 
     return getRecentDateKeys(limit, now)
       .map((dateKey) => {
-        const stats = statsByDay[dateKey] ?? { reminders: 0, completed: 0, skipped: 0 };
+        const stats = statsByDay[dateKey] ?? {
+          reminders: 0,
+          completed: 0,
+          skipped: 0,
+          snoozed: 0,
+          interrupted: 0,
+          restSeconds: 0,
+          longestFocusSeconds: 0,
+          currentCompletionStreak: 0
+        };
         const session = sessionsByDay[dateKey] ?? {
           status: 'not-started',
           startedAtIso: null,
@@ -616,6 +821,11 @@ export class ReminderController extends EventEmitter {
           reminders: stats.reminders,
           completed: stats.completed,
           skipped: stats.skipped,
+          snoozed: stats.snoozed,
+          interrupted: stats.interrupted,
+          restSeconds: stats.restSeconds,
+          longestFocusSeconds: stats.longestFocusSeconds,
+          currentCompletionStreak: stats.currentCompletionStreak,
           completionRate: stats.reminders > 0 ? stats.completed / stats.reminders : 0
         };
       })
@@ -658,7 +868,11 @@ function normalizeDailyRecordCorrection(correction: DailyRecordCorrection): Dail
     ...correction,
     reminders,
     completed,
-    skipped
+    skipped,
+    snoozed: normalizeRecordCount(correction.snoozed),
+    interrupted: normalizeRecordCount(correction.interrupted),
+    restSeconds: normalizeRecordCount(correction.restSeconds),
+    longestFocusSeconds: normalizeRecordCount(correction.longestFocusSeconds)
   };
 }
 
@@ -677,6 +891,9 @@ function hasDailyRecordActivity(record: DailyDetailRecord): boolean {
     record.workEndedAtIso !== null ||
     record.reminders > 0 ||
     record.completed > 0 ||
-    record.skipped > 0
+    record.skipped > 0 ||
+    record.snoozed > 0 ||
+    record.interrupted > 0 ||
+    record.restSeconds > 0
   );
 }

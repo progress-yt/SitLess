@@ -1,8 +1,8 @@
 import { createEmptyStatsSummary } from './defaults';
 import { getDateKey } from './schedule';
-import type { DailyStats, StatsOverview, StatsPeriod, StatsSummary } from './types';
+import type { DailyStats, DailyStatsFile, StatsOverview, StatsPeriod, StatsSummary } from './types';
 
-export type DailyStatsFile = Record<string, DailyStats>;
+export type { DailyStatsFile } from './types';
 
 export function createStatsOverview(stats: DailyStatsFile, date = new Date()): StatsOverview {
   return {
@@ -25,6 +25,10 @@ export function createStatsSummary(stats: DailyStatsFile, period: StatsPeriod, d
     summary.reminders += normalizeCount(day.reminders);
     summary.completed += normalizeCount(day.completed);
     summary.skipped += normalizeCount(day.skipped);
+    summary.snoozed += normalizeCount(day.snoozed);
+    summary.interrupted += normalizeCount(day.interrupted);
+    summary.restSeconds += normalizeCount(day.restSeconds);
+    summary.longestFocusSeconds = Math.max(summary.longestFocusSeconds, normalizeCount(day.longestFocusSeconds));
 
     if (hasActivity(day)) {
       summary.activeDays += 1;
@@ -32,6 +36,7 @@ export function createStatsSummary(stats: DailyStatsFile, period: StatsPeriod, d
   }
 
   summary.completionRate = summary.reminders > 0 ? summary.completed / summary.reminders : 0;
+  summary.currentCompletionStreak = calculateCompletionStreak(stats, date);
   return summary;
 }
 
@@ -70,9 +75,21 @@ function startOfDay(date: Date): Date {
 }
 
 function hasActivity(day: DailyStats): boolean {
-  return normalizeCount(day.reminders) + normalizeCount(day.completed) + normalizeCount(day.skipped) > 0;
+  return (
+    normalizeCount(day.reminders) +
+    normalizeCount(day.completed) +
+    normalizeCount(day.skipped) +
+    normalizeCount(day.snoozed) +
+    normalizeCount(day.interrupted) +
+    normalizeCount(day.restSeconds)
+  ) > 0;
 }
 
 function normalizeCount(value: number): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function calculateCompletionStreak(stats: DailyStatsFile, date: Date): number {
+  const today = stats[getDateKey(date)];
+  return today ? normalizeCount(today.currentCompletionStreak) : 0;
 }

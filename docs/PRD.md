@@ -8,9 +8,9 @@
 
 SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻，默认在周一到周五工作时间内运行，并排除可配置午休时间。默认提醒模式为“连续活跃使用达到阈值后提醒”，也支持切换为“固定间隔提醒”。
 
-提醒触发后，软件先发出 Windows 系统通知和轻提示音，再显示置顶倒计时小窗。倒计时默认 10 秒。如果用户未处理，软件在主显示器全屏显示当前提醒图片，图片等比铺满屏幕，用户点击“我已起身”后退出全屏并重新计时。
+提醒触发后，软件根据用户选择的提醒强度逐级处理。标准模式先发出 Windows 系统通知和轻提示音，再显示置顶倒计时小窗；倒计时默认 10 秒，超时后在主显示器全屏显示当前提醒图片。全屏页先用柔和、可自定义的文案邀请用户开始休息，达到可配置的最短休息时长后才允许确认完成；遇到紧急工作时，用户可以随时临时中断并稍后再次接收提醒。
 
-所有配置和统计数据保存在本地 JSON 文件中。第一版只展示今日统计，但按日期保存历史数据，为后续趋势功能预留空间。
+所有配置和统计数据保存在本地 JSON 文件中。界面展示日、周、月汇总和最近 30 天明细，并继续按日期保存历史数据，为后续趋势功能预留空间。
 
 ## User Stories
 
@@ -51,19 +51,19 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 35. As a user, I want to replace the current reminder image with a local image, so that the reminder feels personal.
 36. As a user, I want only one current reminder image, so that image management stays simple.
 37. As a user, I want the fullscreen image to fill the screen proportionally with cropping if needed, so that it looks polished.
-38. As a user, I want fullscreen mode to show only “我已起身” as the normal exit action, so that the reminder focuses on standing up.
-39. As a user, I want clicking “我已起身” to exit fullscreen, so that I can return to work after acknowledging the break.
-40. As a user, I want clicking “我已起身” to count as a completed rest, so that the app tracks my successful breaks.
-41. As a user, I want reminder counting to restart after completing a rest, so that the next cycle starts cleanly.
+38. As a user, I want fullscreen mode to ask me to start a short rest, so that closing the screen is not counted as a completed break.
+39. As a user, I want completed rest to require a configurable minimum rest time, so that statistics reflect real rest.
+40. As a user, I want a temporary return-to-work action during rest, so that urgent interruptions do not feel blocked.
+41. As a user, I want reminder counting to restart after completing or interrupting a rest, so that the next cycle starts cleanly.
 42. As a user, I want the tray menu to include opening the main window, so that I can access settings quickly.
 43. As a user, I want the tray menu to include “暂停 1 小时”, so that I can avoid reminders during temporary focus periods.
 44. As a user, I want the tray menu to include “今日不再提醒”, so that I can disable reminders for the rest of the workday.
 45. As a user, I want the tray menu to include exit, so that I can close the application.
 46. As a user, I want the home screen to show current reminder status, so that I know whether reminders are active, paused, or outside work time.
-47. As a user, I want the home screen to show today’s reminder count, completed rest count, and skipped count, so that I can see my daily behavior.
+47. As a user, I want the home screen to show reminder, completed rest, skipped, snoozed, interrupted, rest duration, and longest focus counts, so that I can see my daily behavior.
 48. As a user, I want the home screen to show estimated time until the next reminder, so that I understand what the app is doing.
-49. As a user, I want pause state and resume time visible in the home screen and tray, so that I do not mistake a paused app for a broken app.
-50. As a user, I want a settings page for mode, schedule, reminders, image, sound, and startup, so that all important controls are in one place.
+49. As a user, I want pause, focus, overtime, and resume time visible in the home screen and tray, so that I do not mistake a paused app for a broken app.
+50. As a user, I want a settings page for mode, strength, schedule, reminders, image, sound, and startup, so that all important controls are in one place.
 51. As a user, I want a “测试提醒流程” button, so that I can verify notification, countdown, and fullscreen behavior without waiting 45 minutes.
 52. As a user, I want settings stored locally, so that my preferences persist without cloud services.
 53. As a user, I want statistics stored locally by date, so that future versions can show trends without data migration.
@@ -97,39 +97,39 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - If there is no keyboard or mouse input for more than 5 minutes, the active-use timer resets.
 - The continuous active-use reminder threshold defaults to 45 minutes.
 - The fixed interval reminder defaults to 45 minutes.
-- 上班确认提示只在有效工作时段内自动弹出，不在午休、下班后或周末自动打扰用户。
+- 上班确认提示只在有效工作时段内自动弹出，不在午休、下班后或周末自动打扰用户；用户可选择“我已上班”“稍后再问”或“今天不提醒”。
 - 超过配置下班时间后，如果用户仍有键鼠活动，则视为加班并继续提醒。
-- 加班期间如果无输入超过独立的“下班后空闲”配置，应用自动结束当天工作；记录的下班时间取配置下班时间和最后活跃时间中更晚的一个。
+- 加班期间如果无输入超过“加班无输入自动下班”配置，应用自动结束当天工作；记录的下班时间取配置下班时间和最后活跃时间中更晚的一个。该阈值独立于连续活跃模式的“无输入重置”，默认 60 分钟。
 - 如果倒计时或全屏提醒正在显示，加班自动下班不会直接关闭当前提醒，避免提醒状态突然消失。
 - Snooze defaults to 10 minutes.
-- Reminder escalation flow is: system notification -> topmost countdown window -> primary-display fullscreen image.
+- Reminder escalation flow depends on reminder strength: gentle mode uses notification and countdown only, standard mode uses notification -> countdown -> fullscreen, and strong mode enters fullscreen immediately after notification.
 - Notification and countdown use a light sound by default.
 - Sound can be disabled in settings.
 - Countdown duration defaults to 10 seconds.
 - Countdown actions are “开始休息”, “稍后提醒”, and “跳过本次”.
 - 倒计时小窗需要为底部操作按钮保留明显且稳定的下边距，避免按钮贴近窗口底部。
 - “开始休息” immediately opens fullscreen reminder mode.
-- “稍后提醒” delays the reminder by the configured snooze duration.
-- “稍后提醒”到期后的再次弹窗仍属于同一次提醒处理，不新增提醒次数；最终“已起身”或“跳过本次”计入该次提醒的处理结果。
+- “稍后提醒” delays the reminder by the configured snooze duration and increments the snooze count for real reminders. 再次弹窗仍属于同一次提醒，不重复增加提醒次数，最终完成或跳过继续记入该提醒的处理结果。
 - “跳过本次” increments today’s skip count and restarts the reminder cycle.
-- Countdown timeout opens fullscreen reminder mode.
+- Countdown timeout snoozes in gentle mode and opens fullscreen in standard mode.
 - Fullscreen reminder mode opens only on the primary display.
 - Fullscreen reminder mode displays the current reminder image.
-- The app ships with one built-in default reminder image.
+- The app ships with four selectable built-in reminder images and one default selection.
 - The user can replace the current reminder image with one local image.
 - v1 does not manage multiple reminder images, random image selection, or image galleries.
 - The image display mode is proportional cover: fill the screen while preserving aspect ratio, cropping if necessary.
-- Fullscreen reminder mode exposes only the normal action “我已起身”.
-- Clicking “我已起身” exits fullscreen, increments today’s completed rest count, and restarts the reminder cycle.
-- The tray menu includes: open main window, pause 1 hour, do not remind again today, and exit.
-- Pause state and resume time are visible in both the home screen and tray representation.
+- Fullscreen reminder mode exposes configurable start, complete, and temporary-interrupt actions.
+- Clicking the start action begins a minimum rest timer; the completed-rest count increments only after the timer elapses and the user confirms completion.
+- Clicking the temporary-interrupt action exits fullscreen, increments the interrupted count, and snoozes the next reminder.
+- The tray menu includes: open main window, pause 1 hour, focus 30 minutes, do not remind again today, and exit.
+- Pause, focus, overtime, and resume time are visible in both the home screen and tray representation.
 - The app has a home screen and a settings page.
 - Home screen displays current state, today’s statistics, and estimated time until next reminder.
-- Settings include reminder mode, work time, lunch time, reminder thresholds, snooze, current image, sound, startup, and test reminder flow.
+- Settings include reminder mode, reminder strength, work time, lunch time, reminder thresholds, snooze, minimum rest time, rest action labels, current image, sound, startup, and test reminder flow.
 - Settings are stored in local JSON.
 - Statistics are stored in local JSON grouped by date.
-- 手动修正历史记录时，完成和跳过次数不能超过提醒次数；应用会规范化不可能的数据。
-- v1 UI displays only today’s statistics: reminder count, completed rest count, and skipped count.
+- 手动修正历史记录时，完成和跳过次数不能超过提醒次数；应用会同步规范化界面输入与持久化数据。
+- v1 UI displays reminder count, completed rest count, skipped count, snoozed count, interrupted count, rest duration, longest focus duration, and completion rate.
 - Historical statistics are still persisted by date to avoid future migration when trend views are added.
 
 ## Testing Decisions
@@ -140,10 +140,10 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - Continuous active-use behavior should be tested with fake keyboard/mouse activity and idle gaps longer than 5 minutes.
 - Fixed interval behavior should be tested with fake time and the same schedule gates.
 - Reminder escalation should be tested as a state flow: due -> notified -> countdown -> fullscreen -> completed.
-- Countdown actions should be tested: start rest, snooze, skip, and timeout.
-- Statistics aggregation should be tested through user-visible events: reminder fired, rest completed, skipped.
+- Countdown actions should be tested: start rest, snooze, skip, timeout, and reminder strength differences.
+- Statistics aggregation should be tested through user-visible events: reminder fired, rest completed, skipped, snoozed, interrupted, rest duration, and longest focus duration.
 - Persistence should be tested for reading defaults, saving settings, loading saved settings, and grouped-by-date statistics.
-- UI tests should cover the home screen status, today’s statistics, settings controls, image replacement preview, and test reminder button.
+- UI tests should cover the home screen status, period statistics, detailed records, settings controls, image replacement preview, and test reminder button.
 - Electron integration should be smoke-tested manually or with an E2E harness for tray behavior, Windows notification, primary-display fullscreen window, and startup setting.
 - The “测试提醒流程” button should be used as an acceptance test path during manual QA because it exercises the full reminder escalation without waiting for the normal threshold.
 

@@ -1,4 +1,5 @@
 export type ReminderMode = 'active' | 'fixed';
+export type ReminderStrength = 'gentle' | 'standard' | 'strong';
 
 export type AppStatus =
   | 'outside-schedule'
@@ -42,15 +43,21 @@ export interface AppSettings {
   activeThresholdMinutes: number;
   fixedIntervalMinutes: number;
   idleResetMinutes: number;
-  autoEndIdleMinutes: number;
+  overtimeAutoEndMinutes: number;
   snoozeMinutes: number;
   countdownSeconds: number;
+  minimumRestSeconds: number;
+  reminderStrength: ReminderStrength;
+  workdayPromptSnoozeMinutes: number;
   soundEnabled: boolean;
   launchAtStartup: boolean;
   hasSeenStartupPrompt: boolean;
-  builtInReminderImageId: BuiltInReminderImageId;
   customReminderImagePath: string | null;
+  builtInReminderImageId: BuiltInReminderImageId;
   restPromptText: string;
+  restStartButtonText: string;
+  restCompleteButtonText: string;
+  restInterruptButtonText: string;
   updatedAtIso: string;
 }
 
@@ -58,7 +65,14 @@ export interface DailyStats {
   reminders: number;
   completed: number;
   skipped: number;
+  snoozed: number;
+  interrupted: number;
+  restSeconds: number;
+  longestFocusSeconds: number;
+  currentCompletionStreak: number;
 }
+
+export type DailyStatsFile = Record<string, DailyStats>;
 
 export type StatsPeriod = 'day' | 'week' | 'month';
 
@@ -84,12 +98,12 @@ export interface DailyDetailRecord extends DailyStats {
   completionRate: number;
 }
 
-export interface DailyRecordCorrection extends DailyStats {
+export type DailyRecordCorrection = Omit<DailyStats, 'currentCompletionStreak'> & {
   dateKey: string;
   workStatus: WorkdayStatus;
   workStartedAtIso: string | null;
   workEndedAtIso: string | null;
-}
+};
 
 export interface DaySession {
   status: WorkdayStatus;
@@ -111,6 +125,8 @@ export interface DailyPoem {
   source: 'jinrishici' | 'fallback' | 'cache';
 }
 
+export type DaySessionFile = Record<string, DaySession>;
+
 export interface DailyPoemRefreshState {
   canRefresh: boolean;
   isRefreshing: boolean;
@@ -123,6 +139,14 @@ export interface DailyPoemRefreshResult {
   snapshot: AppSnapshot;
   status: DailyPoemRefreshStatus;
   retryAfterSeconds: number;
+}
+
+export interface FullscreenRestState {
+  phase: 'prompt' | 'resting' | 'ready';
+  startedAtIso: string | null;
+  remainingSeconds: number;
+  minimumRestSeconds: number;
+  canComplete: boolean;
 }
 
 export interface AppSnapshot {
@@ -138,9 +162,15 @@ export interface AppSnapshot {
   nextReminderAtIso: string | null;
   pauseUntilIso: string | null;
   mutedToday: boolean;
+  isOvertime: boolean;
+  overtimeAutoEndSeconds: number | null;
+  consecutiveSnoozes: number;
+  currentCompletionStreak: number;
+  imageFallbackActive: boolean;
   daySession: DaySession;
   dailyPoem: DailyPoem | null;
   dailyPoemRefresh: DailyPoemRefreshState;
+  fullscreenRest: FullscreenRestState | null;
   idleSeconds: number;
   imageRevision: number;
 }

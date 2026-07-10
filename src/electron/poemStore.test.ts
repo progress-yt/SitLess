@@ -80,6 +80,28 @@ describe('PoemStore', () => {
     expect(usedTokens).toEqual(['stale-token', 'fresh-token']);
     expect(JSON.parse(readFileSync(join(userDataPath, 'daily-poem.json'), 'utf8')).token).toBe('fresh-token');
   });
+
+  it('falls back locally when the remote request exceeds its timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      electronMock.fetch.mockImplementation((_url: string, init?: { signal?: AbortSignal }) => {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+        });
+      });
+      const store = new PoemStore();
+      let result: Awaited<ReturnType<PoemStore['refreshToday']>> | null = null;
+
+      void store.refreshToday(new Date('2026-06-10T10:00:00'), { force: true }).then((poem) => {
+        result = poem;
+      });
+      await vi.advanceTimersByTimeAsync(5001);
+
+      expect(result?.source).toBe('fallback');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
