@@ -89,6 +89,40 @@ describe('overtime auto end', () => {
     expect(controller.getSnapshot().status).toBe('off-work');
     expect(stores.daySessionStore.getToday().status).toBe('off-work');
   });
+
+  it('closes the owning workday when an overtime session crosses midnight', () => {
+    const workday = new Date('2026-06-10T23:59:50');
+    const nextDay = new Date('2026-06-11T00:00:01');
+    const clock = new ManualReminderClock(workday);
+    const stores = createControllerStores(clock.now);
+    const sessions: Record<string, DaySession> = {
+      [getDateKey(workday)]: {
+        ...createEmptyDaySession(),
+        status: 'working',
+        startedAtIso: workday.toISOString()
+      }
+    };
+    stores.daySessionStore.getToday = (date = clock.now()) => sessions[getDateKey(date)] ?? createEmptyDaySession();
+    stores.daySessionStore.getRecentDays = () => sessions;
+    stores.daySessionStore.setDay = (dateKey, session) => {
+      sessions[dateKey] = session;
+      return session;
+    };
+    const controller = createController(stores, {}, clock);
+
+    controller.refresh();
+    clock.advanceBy(11 * 1000);
+    controller.refresh();
+
+    expect(sessions[getDateKey(workday)]).toMatchObject({
+      status: 'off-work',
+      endedAtIso: new Date('2026-06-11T00:00:00').toISOString()
+    });
+    expect(controller.getSnapshot()).toMatchObject({
+      nowIso: nextDay.toISOString(),
+      status: 'outside-schedule'
+    });
+  });
 });
 
 // Pin time to a weekday within work hours so the schedule gate allows reminders.
@@ -258,6 +292,35 @@ describe('snoozed reminder stats', () => {
   });
 });
 
+describe('countdown timing', () => {
+  it('keeps the active countdown deadline when settings change', () => {
+    const clock = new ManualReminderClock(FAKE_WEEKDAY);
+    const stores = createControllerStores(clock.now);
+    stores.settings.activeThresholdMinutes = 1;
+    stores.settings.countdownSeconds = 10;
+    const controller = createController(stores, {}, clock);
+
+    controller.refresh();
+    clock.advanceBy(61 * 1000);
+    controller.refresh();
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'countdown',
+      remainingSeconds: 10
+    });
+
+    clock.advanceBy(3 * 1000);
+    const previous = { ...stores.settings };
+    stores.settings.countdownSeconds = 120;
+    controller.handleSettingsChange(previous, stores.settings);
+
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'countdown',
+      remainingSeconds: 7,
+      countdownDurationSeconds: 10
+    });
+  });
+});
+
 describe('fullscreen rest flow', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -363,6 +426,35 @@ describe('fullscreen rest flow', () => {
 
     expect(controller.getSnapshot().currentCompletionStreak).toBe(0);
     expect(stores.statsStore.getToday().completed).toBe(0);
+  });
+
+  it('attributes a rest completed after midnight to the reminder date', () => {
+    const reminderDay = new Date('2026-06-10T23:58:00');
+    const nextDay = new Date('2026-06-11T00:00:01');
+    const clock = new ManualReminderClock(reminderDay);
+    const stores = createControllerStores(clock.now);
+    stores.settings.activeThresholdMinutes = 1;
+    stores.settings.minimumRestSeconds = 60;
+    const controller = createController(stores, {}, clock);
+
+    controller.refresh();
+    clock.advanceBy(61 * 1000);
+    controller.refresh();
+    controller.handleCountdownAction('start-rest');
+    clock.advanceBy(60 * 1000);
+    controller.refresh();
+    controller.completeRest();
+
+    expect(stores.statsStore.getToday(reminderDay)).toMatchObject({
+      reminders: 1,
+      completed: 1,
+      restSeconds: 60
+    });
+    expect(stores.statsStore.getToday(nextDay)).toMatchObject({
+      reminders: 0,
+      completed: 0,
+      restSeconds: 0
+    });
   });
 
   it('persists a reset completion streak after a later snooze', () => {
@@ -547,6 +639,27 @@ describe('workday start prompt choices', () => {
 
     expect(controller.getSnapshot().status).toBe('muted-today');
     expect(stores.runtimeStateStore.get().mutedDateKey).toBe(getDateKey(FAKE_WEEKDAY));
+  });
+
+  it('ignores a workday start choice after the prompt expires', async () => {
+    vi.setSystemTime(new Date('2026-06-10T17:59:00'));
+    const stores = createControllerStores();
+    stores.daySessionStore.setDay(getDateKey(new Date()), createEmptyDaySession());
+    let resolveChoice: (choice: 'start') => void = () => undefined;
+    const controller = createController(stores, {
+      confirmWorkdayStart: () => new Promise((resolve) => {
+        resolveChoice = resolve;
+      })
+    });
+
+    controller.refresh();
+    vi.setSystemTime(new Date('2026-06-10T18:01:00'));
+    resolveChoice('start');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(stores.daySessionStore.getToday().status).toBe('not-started');
+    expect(controller.getSnapshot().status).toBe('outside-schedule');
   });
 });
 

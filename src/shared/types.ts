@@ -170,6 +170,7 @@ export interface AppSnapshot {
   canRunReminders: boolean;
   scheduleReason: 'weekday' | 'weekend' | 'before-work' | 'after-work' | 'lunch';
   remainingSeconds: number | null;
+  countdownDurationSeconds: number | null;
   nextReminderAtIso: string | null;
   pauseUntilIso: string | null;
   mutedToday: boolean;

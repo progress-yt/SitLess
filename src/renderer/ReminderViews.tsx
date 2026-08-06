@@ -1,24 +1,12 @@
-import { useEffect, useState } from 'react';
 import { Bell, BriefcaseBusiness, CheckCircle2, Clock3, Play, SkipForward } from 'lucide-react';
 import type { AppSnapshot } from '../shared/types';
 import { sitlessApi } from './api';
 import { formatDuration, getFullscreenRestLabel, getReminderImageUrl } from './presentation';
 
 export function CountdownView({ snapshot }: { snapshot: AppSnapshot }) {
-  const [seconds, setSeconds] = useState(snapshot.settings.countdownSeconds);
-
-  useEffect(() => {
-    setSeconds(snapshot.settings.countdownSeconds);
-  }, [snapshot.settings.countdownSeconds]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setSeconds((current) => Math.max(0, current - 1));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const percent = Math.max(0, Math.min(100, (seconds / snapshot.settings.countdownSeconds) * 100));
+  const seconds = snapshot.remainingSeconds ?? snapshot.settings.countdownSeconds;
+  const countdownDurationSeconds = snapshot.countdownDurationSeconds ?? snapshot.settings.countdownSeconds;
+  const percent = Math.max(0, Math.min(100, (seconds / countdownDurationSeconds) * 100));
 
   return (
     <main className="countdown-window">

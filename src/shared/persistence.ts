@@ -30,6 +30,9 @@ export function normalizeSettings(value: unknown): AppSettings {
   const normalizedWorkStart = normalizeTimeString(workSchedule.start, defaults.workSchedule.start);
   const normalizedWorkEnd = normalizeTimeString(workSchedule.end, defaults.workSchedule.end);
   const hasSameDayWorkSchedule = parseTimeToMinutes(normalizedWorkStart) < parseTimeToMinutes(normalizedWorkEnd);
+  const normalizedLunchStart = normalizeTimeString(lunch.start, defaults.workSchedule.lunch.start);
+  const normalizedLunchEnd = normalizeTimeString(lunch.end, defaults.workSchedule.lunch.end);
+  const hasSameDayLunch = parseTimeToMinutes(normalizedLunchStart) < parseTimeToMinutes(normalizedLunchEnd);
 
   return {
     mode: object.mode === 'fixed' ? 'fixed' : 'active',
@@ -38,8 +41,8 @@ export function normalizeSettings(value: unknown): AppSettings {
       end: hasSameDayWorkSchedule ? normalizedWorkEnd : defaults.workSchedule.end,
       lunch: {
         enabled: typeof lunch.enabled === 'boolean' ? lunch.enabled : defaults.workSchedule.lunch.enabled,
-        start: normalizeTimeString(lunch.start, defaults.workSchedule.lunch.start),
-        end: normalizeTimeString(lunch.end, defaults.workSchedule.lunch.end)
+        start: hasSameDayLunch ? normalizedLunchStart : defaults.workSchedule.lunch.start,
+        end: hasSameDayLunch ? normalizedLunchEnd : defaults.workSchedule.lunch.end
       }
     },
     activeThresholdMinutes: clampNumber(Number(object.activeThresholdMinutes ?? defaults.activeThresholdMinutes), 1, 240),
@@ -92,6 +95,9 @@ export function applyEditableSettingsPatch(
   const candidateWorkStart = normalizeTimeString(workSchedulePatch.start, current.workSchedule.start);
   const candidateWorkEnd = normalizeTimeString(workSchedulePatch.end, current.workSchedule.end);
   const hasSameDayWorkSchedule = parseTimeToMinutes(candidateWorkStart) < parseTimeToMinutes(candidateWorkEnd);
+  const candidateLunchStart = normalizeTimeString(lunchPatch.start, current.workSchedule.lunch.start);
+  const candidateLunchEnd = normalizeTimeString(lunchPatch.end, current.workSchedule.lunch.end);
+  const hasSameDayLunch = parseTimeToMinutes(candidateLunchStart) < parseTimeToMinutes(candidateLunchEnd);
 
   return normalizeSettings({
     ...current,
@@ -103,7 +109,9 @@ export function applyEditableSettingsPatch(
       end: hasSameDayWorkSchedule ? candidateWorkEnd : current.workSchedule.end,
       lunch: {
         ...current.workSchedule.lunch,
-        ...lunchPatch
+        ...lunchPatch,
+        start: hasSameDayLunch ? candidateLunchStart : current.workSchedule.lunch.start,
+        end: hasSameDayLunch ? candidateLunchEnd : current.workSchedule.lunch.end
       }
     },
     customReminderImagePath: current.customReminderImagePath,

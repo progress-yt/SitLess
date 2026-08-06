@@ -71,6 +71,7 @@ export function createBrowserFallbackApi(): SitlessApi {
       canRunReminders: daySession.status === 'working' && !mutedToday,
       scheduleReason: 'weekday',
       remainingSeconds: getRemainingSeconds(status, now, pauseUntilIso, snoozeUntilIso, thresholdMinutes),
+      countdownDurationSeconds: status === 'countdown' ? settings.countdownSeconds : null,
       nextReminderAtIso: status === 'counting'
         ? new Date(now.getTime() + thresholdMinutes * 60 * 1000).toISOString()
         : null,

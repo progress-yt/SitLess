@@ -85,9 +85,14 @@ export class ReminderController extends EventEmitter {
   private consecutiveSnoozes = 0;
   private lastWithinSchedule = false;
   private countdownTimer: ReminderTimerHandle | null = null;
+  private countdownEndsAt: number | null = null;
+  private countdownDurationSeconds: number | null = null;
   private interval: ReminderTimerHandle | null = null;
   private workdayPromptInFlight = false;
   private currentReminderCountsOutcome = true;
+  private currentReminderStartedAt: number | null = null;
+  private activeWorkdayDateKey: string | null = null;
+  private activeWorkdayIsLive = false;
   private snapshot: AppSnapshot;
   private imageRevision = 0;
   private lastPoemRefreshDateKey: string | null = null;
@@ -109,7 +114,13 @@ export class ReminderController extends EventEmitter {
     private readonly clock: ReminderClock = systemReminderClock
   ) {
     super();
-    this.snapshot = this.buildSnapshot(this.clock.now(), 'outside-schedule', null, 0);
+    const now = this.clock.now();
+    const todayDateKey = getDateKey(now);
+    const recentSessions = this.daySessionStore.getRecentDays(30, now);
+    this.activeWorkdayDateKey = getRecentDateKeys(30, now)
+      .find((dateKey) => recentSessions[dateKey]?.status === 'working') ?? null;
+    this.activeWorkdayIsLive = this.activeWorkdayDateKey === todayDateKey;
+    this.snapshot = this.buildSnapshot(now, 'outside-schedule', null, 0);
   }
 
   start(): void {
@@ -145,6 +156,7 @@ export class ReminderController extends EventEmitter {
       this.phase = 'running';
       this.snoozeUntil = null;
       this.fullscreenRestStartedAt = null;
+      this.currentReminderStartedAt = null;
       this.resetCycle(now);
     }
 
@@ -217,6 +229,7 @@ export class ReminderController extends EventEmitter {
     this.phase = 'running';
     this.snoozeUntil = null;
     this.fullscreenRestStartedAt = null;
+    this.currentReminderStartedAt = null;
     const durationMinutes = clampNumber(Math.floor(Number(minutes)), 1, 240);
     this.runtimeStateStore.setPauseUntil(new Date(now.getTime() + durationMinutes * 60 * 1000), now);
     this.resetCycle(now);
@@ -232,6 +245,7 @@ export class ReminderController extends EventEmitter {
     this.phase = 'running';
     this.snoozeUntil = null;
     this.fullscreenRestStartedAt = null;
+    this.currentReminderStartedAt = null;
     this.consecutiveSnoozes = 0;
     this.runtimeStateStore.setPauseUntil(null, now);
     this.resetCycle(now);
@@ -247,6 +261,7 @@ export class ReminderController extends EventEmitter {
     this.deps.closeFullscreen();
     this.phase = 'running';
     this.fullscreenRestStartedAt = null;
+    this.currentReminderStartedAt = null;
     this.consecutiveSnoozes = 0;
     this.runtimeStateStore.muteToday(now);
     this.resetCycle(now);
@@ -257,10 +272,13 @@ export class ReminderController extends EventEmitter {
   startWorkday(): AppSnapshot {
     const now = this.clock.now();
     this.daySessionStore.start(now);
+    this.activeWorkdayDateKey = getDateKey(now);
+    this.activeWorkdayIsLive = true;
     this.runtimeStateStore.clearMute(now);
     this.invalidateRecordsCache();
     this.phase = 'running';
     this.fullscreenRestStartedAt = null;
+    this.currentReminderStartedAt = null;
     this.workdayPromptSnoozeUntil = null;
     this.consecutiveSnoozes = 0;
     this.resetCycle(now);
@@ -275,9 +293,12 @@ export class ReminderController extends EventEmitter {
     this.deps.closeCountdown();
     this.deps.closeFullscreen();
     this.daySessionStore.end(now);
+    this.activeWorkdayDateKey = null;
+    this.activeWorkdayIsLive = false;
     this.invalidateRecordsCache();
     this.phase = 'running';
     this.fullscreenRestStartedAt = null;
+    this.currentReminderStartedAt = null;
     this.consecutiveSnoozes = 0;
     this.resetCycle(now);
     this.tick();
@@ -307,6 +328,10 @@ export class ReminderController extends EventEmitter {
       startPromptedAtIso: null
     };
     this.daySessionStore.setDay(normalized.dateKey, session);
+    if (normalized.dateKey === getDateKey(now)) {
+      this.activeWorkdayDateKey = normalized.workStatus === 'working' ? normalized.dateKey : null;
+      this.activeWorkdayIsLive = normalized.workStatus === 'working';
+    }
     this.statsStore.setDay(normalized.dateKey, {
       reminders: normalized.reminders,
       completed: normalized.completed,
@@ -348,11 +373,12 @@ export class ReminderController extends EventEmitter {
     if (action === 'skip') {
       const now = this.clock.now();
       if (this.currentReminderCountsOutcome) {
-        this.statsStore.recordOutcome('skipped', now);
+        this.statsStore.recordOutcome('skipped', this.getCurrentReminderDate(now));
         this.invalidateRecordsCache();
         this.consecutiveSnoozes = 0;
       }
       this.phase = 'running';
+      this.currentReminderStartedAt = null;
       this.resetCycle(now);
       this.tick();
     }
@@ -371,13 +397,15 @@ export class ReminderController extends EventEmitter {
 
     this.deps.closeFullscreen();
     if (this.currentReminderCountsOutcome) {
-      this.statsStore.recordOutcome('completed', now);
-      this.statsStore.addRestSeconds(this.getRestDurationSeconds(now), now);
+      const reminderDate = this.getCurrentReminderDate(now);
+      this.statsStore.recordOutcome('completed', reminderDate);
+      this.statsStore.addRestSeconds(this.getRestDurationSeconds(now), reminderDate);
       this.invalidateRecordsCache();
       this.consecutiveSnoozes = 0;
     }
     this.phase = 'running';
     this.fullscreenRestStartedAt = null;
+    this.currentReminderStartedAt = null;
     this.resetCycle(now);
     this.tick();
   }
@@ -402,7 +430,7 @@ export class ReminderController extends EventEmitter {
     const settings = this.settingsStore.get();
     this.deps.closeFullscreen();
     if (this.currentReminderCountsOutcome) {
-      this.statsStore.recordOutcome('interrupted', now);
+      this.statsStore.recordOutcome('interrupted', this.getCurrentReminderDate(now));
       this.invalidateRecordsCache();
       this.consecutiveSnoozes += 1;
     }
@@ -435,6 +463,7 @@ export class ReminderController extends EventEmitter {
     const runtimeState = this.runtimeStateStore.get(now);
     this.maybePromptWorkdayStart(now);
     this.refreshDailyPoemIfNeeded(now);
+    this.maybeClosePreviousWorkday(now, settings, idleSeconds);
 
     if (this.maybeEndOvertimeWorkday(now, settings, idleSeconds)) {
       return;
@@ -526,6 +555,7 @@ export class ReminderController extends EventEmitter {
     this.currentReminderCountsOutcome = options.countOutcome;
     this.fullscreenRestStartedAt = null;
     if (options.countReminder) {
+      this.currentReminderStartedAt = now.getTime();
       this.recordCurrentFocus(now);
       this.statsStore.incrementReminder(now);
       this.invalidateRecordsCache();
@@ -540,9 +570,11 @@ export class ReminderController extends EventEmitter {
     this.phase = 'countdown';
     this.deps.openCountdown();
     this.clearCountdownTimer();
+    this.countdownDurationSeconds = this.settingsStore.get().countdownSeconds;
+    this.countdownEndsAt = now.getTime() + this.countdownDurationSeconds * 1000;
     this.countdownTimer = this.clock.setTimeout(() => {
       this.handleCountdownAction('timeout');
-    }, this.settingsStore.get().countdownSeconds * 1000);
+    }, this.countdownEndsAt - now.getTime());
     this.emitSnapshot(this.buildSnapshot(now, 'countdown', null, this.deps.getIdleSeconds()));
   }
 
@@ -550,7 +582,7 @@ export class ReminderController extends EventEmitter {
     const now = this.clock.now();
     const settings = this.settingsStore.get();
     if (this.currentReminderCountsOutcome) {
-      this.statsStore.recordOutcome('snoozed', now);
+      this.statsStore.recordOutcome('snoozed', this.getCurrentReminderDate(now));
       this.invalidateRecordsCache();
       this.consecutiveSnoozes += 1;
     }
@@ -590,10 +622,21 @@ export class ReminderController extends EventEmitter {
       return;
     }
 
+    const promptedDateKey = getDateKey(now);
     this.workdayPromptInFlight = true;
     void this.deps.confirmWorkdayStart()
       .then((choice) => {
         const resolvedAt = this.clock.now();
+        const currentSession = this.daySessionStore.getToday(resolvedAt);
+        if (
+          getDateKey(resolvedAt) !== promptedDateKey ||
+          !shouldPromptWorkdayStart(resolvedAt, this.settingsStore.get()) ||
+          currentSession.status !== 'not-started'
+        ) {
+          this.tick();
+          return;
+        }
+
         if (choice === 'start') {
           this.startWorkday();
           return;
@@ -659,6 +702,8 @@ export class ReminderController extends EventEmitter {
       this.clock.clearTimeout(this.countdownTimer);
       this.countdownTimer = null;
     }
+    this.countdownEndsAt = null;
+    this.countdownDurationSeconds = null;
   }
 
   private buildSnapshot(now: Date, status: AppStatus, remainingSeconds: number | null, idleSeconds: number): AppSnapshot {
@@ -668,9 +713,12 @@ export class ReminderController extends EventEmitter {
     const workdayGate = getWorkdayGateStatus(now, settings, daySession);
     const runtimeState = this.runtimeStateStore.get(now);
     const isOvertime = daySession.status === 'working' && schedule.reason === 'after-work';
+    const resolvedRemainingSeconds = status === 'countdown' && this.countdownEndsAt !== null
+      ? secondsUntil(now, this.countdownEndsAt)
+      : remainingSeconds;
     const nextReminderAtIso =
-      status === 'counting' && remainingSeconds !== null
-        ? new Date(now.getTime() + remainingSeconds * 1000).toISOString()
+      status === 'counting' && resolvedRemainingSeconds !== null
+        ? new Date(now.getTime() + resolvedRemainingSeconds * 1000).toISOString()
         : null;
 
     const todayDateKey = getDateKey(now);
@@ -695,7 +743,8 @@ export class ReminderController extends EventEmitter {
       dailyRecords: this.cachedDailyRecords!,
       canRunReminders: workdayGate.canRunReminders,
       scheduleReason: schedule.reason,
-      remainingSeconds,
+      remainingSeconds: resolvedRemainingSeconds,
+      countdownDurationSeconds: status === 'countdown' ? this.countdownDurationSeconds : null,
       nextReminderAtIso,
       pauseUntilIso: runtimeState.pauseUntilIso,
       mutedToday: runtimeState.mutedDateKey === todayDateKey,
@@ -743,6 +792,12 @@ export class ReminderController extends EventEmitter {
     return this.fullscreenRestStartedAt === null
       ? 0
       : Math.max(0, Math.floor((now.getTime() - this.fullscreenRestStartedAt) / 1000));
+  }
+
+  private getCurrentReminderDate(fallback: Date): Date {
+    return this.currentReminderStartedAt === null
+      ? fallback
+      : new Date(this.currentReminderStartedAt);
   }
 
   private getDailyPoemRefreshState(now: Date) {
@@ -799,10 +854,46 @@ export class ReminderController extends EventEmitter {
     const endedAt = getOvertimeEndDate(now, settings, idleSeconds);
     this.recordCurrentFocus(endedAt);
     this.daySessionStore.end(endedAt);
+    this.activeWorkdayDateKey = null;
+    this.activeWorkdayIsLive = false;
     this.invalidateRecordsCache();
     this.resetCycle(now);
     this.emitSnapshot(this.buildSnapshot(now, 'off-work', null, idleSeconds));
     return true;
+  }
+
+  private maybeClosePreviousWorkday(now: Date, settings: AppSettings, idleSeconds: number): void {
+    const dateKey = this.activeWorkdayDateKey;
+    if (
+      dateKey === null ||
+      dateKey === getDateKey(now) ||
+      this.phase === 'countdown' ||
+      this.phase === 'fullscreen'
+    ) {
+      return;
+    }
+
+    const session = this.daySessionStore.getRecentDays(30, now)[dateKey];
+    if (session?.status === 'working') {
+      const scheduledEnd = getScheduledWorkEndDate(new Date(`${dateKey}T12:00:00`), settings);
+      const endedAt = this.activeWorkdayIsLive
+        ? getWorkdayBoundaryEndDate(dateKey, now, scheduledEnd, idleSeconds)
+        : scheduledEnd;
+      this.daySessionStore.setDay(dateKey, {
+        ...session,
+        status: 'off-work',
+        endedAtIso: endedAt.toISOString()
+      });
+      this.invalidateRecordsCache();
+    }
+
+    this.activeWorkdayDateKey = null;
+    this.activeWorkdayIsLive = false;
+    this.phase = 'running';
+    this.snoozeUntil = null;
+    this.currentReminderStartedAt = null;
+    this.lastWithinSchedule = false;
+    this.cycleStartedAt = null;
   }
 
   private invalidateRecordsCache(): void {
@@ -861,6 +952,14 @@ export function getOvertimeEndDate(date: Date, settings: AppSettings, idleSecond
   const lastActiveAt = new Date(date.getTime() - Math.max(0, idleSeconds) * 1000);
   const scheduledEndAt = getScheduledWorkEndDate(date, settings);
   return lastActiveAt.getTime() > scheduledEndAt.getTime() ? lastActiveAt : scheduledEndAt;
+}
+
+function getWorkdayBoundaryEndDate(dateKey: string, now: Date, scheduledEnd: Date, idleSeconds: number): Date {
+  const workday = new Date(`${dateKey}T12:00:00`);
+  const nextDayStartedAt = new Date(workday.getFullYear(), workday.getMonth(), workday.getDate() + 1);
+  const lastActiveAt = new Date(now.getTime() - Math.max(0, idleSeconds) * 1000);
+  const boundedLastActiveAt = new Date(Math.min(lastActiveAt.getTime(), nextDayStartedAt.getTime()));
+  return boundedLastActiveAt.getTime() > scheduledEnd.getTime() ? boundedLastActiveAt : scheduledEnd;
 }
 
 function getScheduledWorkEndDate(date: Date, settings: AppSettings): Date {

@@ -108,6 +108,31 @@ describe('settings persistence normalization', () => {
     expect(next.workSchedule.start).toBe('08:00');
     expect(next.workSchedule.end).toBe('17:00');
   });
+
+  it('rejects cross-midnight lunch breaks', () => {
+    const defaults = createDefaultSettings();
+    const loaded = normalizeSettings({
+      workSchedule: {
+        lunch: {
+          start: '14:00',
+          end: '13:00'
+        }
+      }
+    });
+    const patched = applyEditableSettingsPatch(defaults, {
+      workSchedule: {
+        lunch: {
+          start: '14:00'
+        }
+      }
+    });
+
+    expect(loaded.workSchedule.lunch).toMatchObject({
+      start: defaults.workSchedule.lunch.start,
+      end: defaults.workSchedule.lunch.end
+    });
+    expect(patched.workSchedule.lunch).toEqual(defaults.workSchedule.lunch);
+  });
 });
 
 describe('record persistence normalization', () => {
