@@ -20,7 +20,6 @@ export function registerReminderImageScheme(): void {
       privileges: {
         standard: true,
         secure: true,
-        supportFetchAPI: true,
         stream: true
       }
     }
@@ -34,14 +33,22 @@ export class ReminderImages {
   ) {}
 
   registerProtocolHandler(): void {
-    protocol.handle(REMINDER_IMAGE_SCHEME, () => {
+    protocol.handle(REMINDER_IMAGE_SCHEME, (request) => {
+      const url = new URL(request.url);
+      if (url.hostname !== 'reminder-image' || url.pathname !== '/current') {
+        return new Response(null, { status: 404 });
+      }
       return net.fetch(pathToFileURL(this.getCurrentPath()).toString());
     });
   }
 
   getCurrentPath(): string {
     const settings = this.settingsStore.get();
-    if (settings.customReminderImagePath && existsSync(settings.customReminderImagePath)) {
+    if (
+      settings.customReminderImagePath &&
+      this.isManagedImagePath(settings.customReminderImagePath) &&
+      existsSync(settings.customReminderImagePath)
+    ) {
       return settings.customReminderImagePath;
     }
 
@@ -50,7 +57,10 @@ export class ReminderImages {
 
   isFallbackActive = (): boolean => {
     const settings = this.settingsStore.get();
-    return Boolean(settings.customReminderImagePath && !existsSync(settings.customReminderImagePath));
+    return Boolean(
+      settings.customReminderImagePath &&
+      (!this.isManagedImagePath(settings.customReminderImagePath) || !existsSync(settings.customReminderImagePath))
+    );
   };
 
   async select(): Promise<ImageSelectionResult> {

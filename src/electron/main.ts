@@ -23,7 +23,8 @@ let pendingRelaunchPrompt = false;
 
 const windows = new ReminderWindows(
   () => isQuitting,
-  () => settingsStore?.get().soundEnabled ?? false
+  () => settingsStore?.get().soundEnabled ?? false,
+  (view) => controller?.handleReminderWindowClosed(view)
 );
 
 if (process.env.SITLESS_USER_DATA_DIR) {

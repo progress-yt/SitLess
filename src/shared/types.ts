@@ -61,6 +61,17 @@ export interface AppSettings {
   updatedAtIso: string;
 }
 
+type EditableAppSettings = Omit<
+  AppSettings,
+  'workSchedule' | 'customReminderImagePath' | 'builtInReminderImageId' | 'updatedAtIso'
+>;
+
+export type AppSettingsPatch = Partial<EditableAppSettings> & {
+  workSchedule?: Partial<Omit<WorkScheduleSettings, 'lunch'>> & {
+    lunch?: Partial<LunchBreakSettings>;
+  };
+};
+
 export interface DailyStats {
   reminders: number;
   completed: number;

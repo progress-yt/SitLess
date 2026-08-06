@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultSettings } from './defaults';
 import {
+  applyEditableSettingsPatch,
   cloneSettings,
   getActiveRuntimeState,
   normalizeDaySessionFile,
@@ -57,6 +58,55 @@ describe('settings persistence normalization', () => {
   it('keeps overtime auto-end independent and migrates its former field name', () => {
     expect(normalizeSettings({ idleResetMinutes: 12 }).overtimeAutoEndMinutes).toBe(60);
     expect(normalizeSettings({ autoEndIdleMinutes: 75 }).overtimeAutoEndMinutes).toBe(75);
+  });
+
+  it('applies editable patches without accepting protected image fields', () => {
+    const current = {
+      ...createDefaultSettings(),
+      customReminderImagePath: 'C:\\managed\\reminder.png' as string | null,
+      builtInReminderImageId: 'walk' as const,
+      updatedAtIso: '2026-06-10T01:00:00.000Z'
+    };
+
+    const next = applyEditableSettingsPatch(current, {
+      snoozeMinutes: 27,
+      customReminderImagePath: 'C:\\Windows\\win.ini',
+      builtInReminderImageId: 'photo-1',
+      updatedAtIso: '1999-01-01T00:00:00.000Z'
+    }, new Date('2026-06-10T02:00:00.000Z'));
+
+    expect(next).toMatchObject({
+      snoozeMinutes: 27,
+      customReminderImagePath: 'C:\\managed\\reminder.png',
+      builtInReminderImageId: 'walk',
+      updatedAtIso: '2026-06-10T02:00:00.000Z'
+    });
+  });
+
+  it('rejects cross-midnight work schedules that v1 cannot attribute safely', () => {
+    const defaults = createDefaultSettings();
+    const settings = normalizeSettings({
+      workSchedule: {
+        start: '22:00',
+        end: '06:00'
+      }
+    });
+
+    expect(settings.workSchedule.start).toBe(defaults.workSchedule.start);
+    expect(settings.workSchedule.end).toBe(defaults.workSchedule.end);
+  });
+
+  it('keeps the current schedule when an editable patch would cross midnight', () => {
+    const current = createDefaultSettings();
+    current.workSchedule.start = '08:00';
+    current.workSchedule.end = '17:00';
+
+    const next = applyEditableSettingsPatch(current, {
+      workSchedule: { start: '18:00' }
+    });
+
+    expect(next.workSchedule.start).toBe('08:00');
+    expect(next.workSchedule.end).toBe('17:00');
   });
 });
 

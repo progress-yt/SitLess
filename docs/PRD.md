@@ -87,7 +87,7 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - 稍后提醒、倒计时等两种模式通用的配置应与模式专属配置分组展示。
 - 切换提醒模式后，当前提醒周期重新开始，避免旧模式累计时间导致新模式立即触发提醒。
 - Schedule rules for v1 are Monday-Friday only, with weekends disabled.
-- Monday-Friday use one shared work-time range.
+- Monday-Friday use one shared same-day work-time range; overnight schedules are not supported in v1.
 - Default work time is 09:00-18:00.
 - Lunch break is configurable and excluded from reminders.
 - The default lunch break is 12:00-13:30.

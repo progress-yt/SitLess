@@ -6,7 +6,8 @@ import {
   createEmptyStatsOverview,
   createFallbackDailyPoem
 } from '../shared/defaults';
-import { getDateKey } from '../shared/schedule';
+import { clampNumber, getDateKey } from '../shared/schedule';
+import { applyEditableSettingsPatch } from '../shared/persistence';
 import type { SitlessApi } from '../shared/ipc';
 import type {
   AppSettings,
@@ -101,8 +102,8 @@ export function createBrowserFallbackApi(): SitlessApi {
 
   return {
     getSnapshot: async () => createSnapshot(),
-    updateSettings: async (nextSettings: AppSettings) => {
-      settings = nextSettings;
+    updateSettings: async (patch) => {
+      settings = applyEditableSettingsPatch(settings, patch);
       emitSnapshot();
       return settings;
     },
@@ -138,7 +139,8 @@ export function createBrowserFallbackApi(): SitlessApi {
       return emitSnapshot();
     },
     focusForMinutes: async (minutes: number) => {
-      pauseUntilIso = new Date(Date.now() + Math.max(1, Math.floor(minutes)) * 60 * 1000).toISOString();
+      const durationMinutes = clampNumber(Math.floor(Number(minutes)), 1, 240);
+      pauseUntilIso = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
       status = 'paused';
       return emitSnapshot();
     },

@@ -143,6 +143,14 @@ describe('reminder pause flow', () => {
 
     expect(stores.statsStore.getToday().longestFocusSeconds).toBe(20 * 60);
   });
+
+  it('clamps non-finite focus durations before persisting them', () => {
+    const stores = createControllerStores();
+    const controller = createController(stores);
+
+    expect(() => controller.focusForMinutes(Number.POSITIVE_INFINITY)).not.toThrow();
+    expect(controller.getSnapshot().remainingSeconds).toBe(240 * 60);
+  });
 });
 
 describe('reminder mode changes', () => {
@@ -218,6 +226,30 @@ describe('snoozed reminder stats', () => {
     expect(stores.statsStore.getToday().reminders).toBe(1);
 
     controller.handleCountdownAction('skip');
+    expect(stores.statsStore.getToday()).toMatchObject({
+      reminders: 1,
+      snoozed: 1,
+      skipped: 1
+    });
+  });
+
+  it('does not replace a real snoozed reminder with a test reminder', () => {
+    const stores = createControllerStores();
+    const controller = createController(stores);
+
+    controller.refresh();
+    (controller as unknown as { cycleStartedAt: number | null }).cycleStartedAt = Date.now() - 46 * 60 * 1000;
+    controller.refresh();
+    controller.handleCountdownAction('snooze');
+
+    controller.testReminderFlow();
+    expect(controller.getSnapshot().status).toBe('snoozed');
+
+    vi.setSystemTime(new Date(FAKE_WEEKDAY.getTime() + stores.settings.snoozeMinutes * 60 * 1000 + 1000));
+    controller.refresh();
+    expect(controller.getSnapshot().status).toBe('countdown');
+    controller.handleCountdownAction('skip');
+
     expect(stores.statsStore.getToday()).toMatchObject({
       reminders: 1,
       snoozed: 1,
@@ -428,6 +460,25 @@ describe('snooze and reminder strength flow', () => {
     expect(controller.getSnapshot().status).toBe('fullscreen');
     expect(controller.getSnapshot().fullscreenRest?.phase).toBe('prompt');
     expect(openedFullscreen).toBe(1);
+  });
+
+  it('recovers when an active fullscreen rest window is closed externally', () => {
+    const stores = createControllerStores();
+    stores.settings.activeThresholdMinutes = 1;
+    const controller = createController(stores);
+
+    controller.refresh();
+    vi.setSystemTime(new Date(FAKE_WEEKDAY.getTime() + 61 * 1000));
+    controller.refresh();
+    controller.handleCountdownAction('start-rest');
+    controller.startRest();
+    controller.handleReminderWindowClosed('fullscreen');
+
+    expect(controller.getSnapshot().status).toBe('snoozed');
+    expect(stores.statsStore.getToday()).toMatchObject({
+      reminders: 1,
+      interrupted: 1
+    });
   });
 
   it('counts user snoozes and exposes consecutive snooze nudges', () => {

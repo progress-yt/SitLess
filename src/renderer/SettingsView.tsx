@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Bell,
   CheckCircle2,
@@ -12,7 +12,8 @@ import {
   VolumeX
 } from 'lucide-react';
 import { BUILT_IN_REMINDER_IMAGES, DEFAULT_REST_PROMPT_OPTIONS } from '../shared/defaults';
-import type { AppSettings, AppSnapshot, ReminderMode, ReminderStrength } from '../shared/types';
+import { applyEditableSettingsPatch, cloneSettings } from '../shared/persistence';
+import type { AppSettings, AppSettingsPatch, AppSnapshot, ReminderMode, ReminderStrength } from '../shared/types';
 import { sitlessApi } from './api';
 import {
   getBuiltInReminderImageUrl,
@@ -24,8 +25,18 @@ import {
 } from './presentation';
 
 export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
-  const settings = snapshot.settings;
+  const [settings, setSettings] = useState(() => cloneSettings(snapshot.settings));
   const [modeFeedback, setModeFeedback] = useState<string | null>(null);
+  const latestSnapshotSettings = useRef(snapshot.settings);
+  const latestSaveVersion = useRef(0);
+  const pendingSaves = useRef(0);
+  latestSnapshotSettings.current = snapshot.settings;
+
+  useEffect(() => {
+    if (pendingSaves.current === 0) {
+      setSettings(cloneSettings(snapshot.settings));
+    }
+  }, [snapshot.settings.updatedAtIso]);
 
   useEffect(() => {
     if (!modeFeedback) {
@@ -35,29 +46,38 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
     return () => window.clearTimeout(timer);
   }, [modeFeedback]);
 
-  const save = (next: AppSettings) => {
-    void sitlessApi.updateSettings(next);
+  const save = (patch: AppSettingsPatch) => {
+    const saveVersion = latestSaveVersion.current + 1;
+    latestSaveVersion.current = saveVersion;
+    pendingSaves.current += 1;
+    setSettings((current) => applyEditableSettingsPatch(current, patch));
+
+    void sitlessApi.updateSettings(patch)
+      .then((next) => {
+        if (saveVersion === latestSaveVersion.current) {
+          setSettings(cloneSettings(next));
+        }
+      })
+      .catch(() => {
+        if (saveVersion === latestSaveVersion.current) {
+          setSettings(cloneSettings(latestSnapshotSettings.current));
+        }
+      })
+      .finally(() => {
+        pendingSaves.current = Math.max(0, pendingSaves.current - 1);
+      });
   };
 
-  const update = (patch: Partial<AppSettings>) => {
-    save({ ...settings, ...patch });
+  const update = (patch: AppSettingsPatch) => {
+    save(patch);
   };
 
   const updateSchedule = (patch: Partial<AppSettings['workSchedule']>) => {
-    save({
-      ...settings,
-      workSchedule: { ...settings.workSchedule, ...patch }
-    });
+    save({ workSchedule: patch });
   };
 
   const updateLunch = (patch: Partial<AppSettings['workSchedule']['lunch']>) => {
-    save({
-      ...settings,
-      workSchedule: {
-        ...settings.workSchedule,
-        lunch: { ...settings.workSchedule.lunch, ...patch }
-      }
-    });
+    save({ workSchedule: { lunch: patch } });
   };
 
   const selectMode = (mode: ReminderMode) => {

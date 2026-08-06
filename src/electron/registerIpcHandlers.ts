@@ -23,14 +23,10 @@ export function registerIpcHandlers({
   handleIpc(IPC_CHANNELS.settingsUpdate, (settings) => {
     const previous = settingsStore.get();
     const next = settingsStore.update(settings);
-    startupPreferences.apply(next);
-    controller.handleSettingsChange(previous, next);
-    if (
-      previous.customReminderImagePath !== next.customReminderImagePath ||
-      previous.builtInReminderImageId !== next.builtInReminderImageId
-    ) {
-      controller.bumpImageRevision();
+    if (previous.launchAtStartup !== next.launchAtStartup) {
+      startupPreferences.apply(next);
     }
+    controller.handleSettingsChange(previous, next);
     return next;
   });
 

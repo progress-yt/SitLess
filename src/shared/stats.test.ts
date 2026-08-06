@@ -71,6 +71,14 @@ describe('stats overview', () => {
 
     expect(overview.day.currentCompletionStreak).toBe(0);
   });
+
+  it('counts a day with recorded focus time as active before any reminder fires', () => {
+    const overview = createStatsOverview({
+      '2026-06-08': stats({ longestFocusSeconds: 20 * 60 })
+    }, new Date('2026-06-08T12:00:00'));
+
+    expect(overview.day.activeDays).toBe(1);
+  });
 });
 
 function stats(patch: Partial<DailyStats>): DailyStats {

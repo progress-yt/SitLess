@@ -1,5 +1,6 @@
 import type {
   AppSettings,
+  AppSettingsPatch,
   AppSnapshot,
   BuiltInReminderImageId,
   CountdownAction,
@@ -32,7 +33,7 @@ export const IPC_CHANNELS = {
 
 export interface IpcInvokeContract {
   [IPC_CHANNELS.snapshotGet]: { args: []; result: AppSnapshot };
-  [IPC_CHANNELS.settingsUpdate]: { args: [settings: AppSettings]; result: AppSettings };
+  [IPC_CHANNELS.settingsUpdate]: { args: [patch: AppSettingsPatch]; result: AppSettings };
   [IPC_CHANNELS.imageSelect]: { args: []; result: ImageSelectionResult };
   [IPC_CHANNELS.imageReset]: { args: []; result: AppSettings };
   [IPC_CHANNELS.imageSetBuiltIn]: { args: [imageId: BuiltInReminderImageId]; result: AppSettings };

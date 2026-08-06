@@ -24,4 +24,18 @@ describe('browser fallback API', () => {
 
     expect(snapshots).toHaveLength(1);
   });
+
+  it('merges settings patches and ignores protected fields at runtime', async () => {
+    const api = createBrowserFallbackApi();
+    const initial = await api.getSnapshot();
+
+    const updated = await api.updateSettings({
+      snoozeMinutes: 27,
+      customReminderImagePath: 'C:\\Windows\\win.ini'
+    } as never);
+
+    expect(updated.snoozeMinutes).toBe(27);
+    expect(updated.activeThresholdMinutes).toBe(initial.settings.activeThresholdMinutes);
+    expect(updated.customReminderImagePath).toBeNull();
+  });
 });

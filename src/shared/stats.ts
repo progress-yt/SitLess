@@ -81,7 +81,8 @@ function hasActivity(day: DailyStats): boolean {
     normalizeCount(day.skipped) +
     normalizeCount(day.snoozed) +
     normalizeCount(day.interrupted) +
-    normalizeCount(day.restSeconds)
+    normalizeCount(day.restSeconds) +
+    normalizeCount(day.longestFocusSeconds)
   ) > 0;
 }
 

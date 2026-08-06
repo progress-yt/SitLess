@@ -7,9 +7,10 @@ import {
   createEmptyDaySession,
   createEmptyRuntimeState
 } from './defaults';
-import { clampNumber, getDateKey } from './schedule';
+import { clampNumber, getDateKey, parseTimeToMinutes } from './schedule';
 import type {
   AppSettings,
+  AppSettingsPatch,
   BuiltInReminderImageId,
   DailyStats,
   DailyStatsFile,
@@ -26,12 +27,15 @@ export function normalizeSettings(value: unknown): AppSettings {
   const object = isRecord(value) ? value : {};
   const workSchedule = isRecord(object.workSchedule) ? object.workSchedule : {};
   const lunch = isRecord(workSchedule.lunch) ? workSchedule.lunch : {};
+  const normalizedWorkStart = normalizeTimeString(workSchedule.start, defaults.workSchedule.start);
+  const normalizedWorkEnd = normalizeTimeString(workSchedule.end, defaults.workSchedule.end);
+  const hasSameDayWorkSchedule = parseTimeToMinutes(normalizedWorkStart) < parseTimeToMinutes(normalizedWorkEnd);
 
   return {
     mode: object.mode === 'fixed' ? 'fixed' : 'active',
     workSchedule: {
-      start: normalizeTimeString(workSchedule.start, defaults.workSchedule.start),
-      end: normalizeTimeString(workSchedule.end, defaults.workSchedule.end),
+      start: hasSameDayWorkSchedule ? normalizedWorkStart : defaults.workSchedule.start,
+      end: hasSameDayWorkSchedule ? normalizedWorkEnd : defaults.workSchedule.end,
       lunch: {
         enabled: typeof lunch.enabled === 'boolean' ? lunch.enabled : defaults.workSchedule.lunch.enabled,
         start: normalizeTimeString(lunch.start, defaults.workSchedule.lunch.start),
@@ -74,6 +78,38 @@ export function cloneSettings(settings: AppSettings): AppSettings {
       lunch: { ...settings.workSchedule.lunch }
     }
   };
+}
+
+export function applyEditableSettingsPatch(
+  current: AppSettings,
+  value: unknown,
+  updatedAt = new Date()
+): AppSettings {
+  const patch = isRecord(value) ? value : {};
+  const workSchedulePatch = isRecord(patch.workSchedule) ? patch.workSchedule : {};
+  const lunchPatch = isRecord(workSchedulePatch.lunch) ? workSchedulePatch.lunch : {};
+  const editablePatch = patch as AppSettingsPatch;
+  const candidateWorkStart = normalizeTimeString(workSchedulePatch.start, current.workSchedule.start);
+  const candidateWorkEnd = normalizeTimeString(workSchedulePatch.end, current.workSchedule.end);
+  const hasSameDayWorkSchedule = parseTimeToMinutes(candidateWorkStart) < parseTimeToMinutes(candidateWorkEnd);
+
+  return normalizeSettings({
+    ...current,
+    ...editablePatch,
+    workSchedule: {
+      ...current.workSchedule,
+      ...workSchedulePatch,
+      start: hasSameDayWorkSchedule ? candidateWorkStart : current.workSchedule.start,
+      end: hasSameDayWorkSchedule ? candidateWorkEnd : current.workSchedule.end,
+      lunch: {
+        ...current.workSchedule.lunch,
+        ...lunchPatch
+      }
+    },
+    customReminderImagePath: current.customReminderImagePath,
+    builtInReminderImageId: current.builtInReminderImageId,
+    updatedAtIso: updatedAt.toISOString()
+  });
 }
 
 export function normalizeDailyStats(value: unknown): DailyStats {

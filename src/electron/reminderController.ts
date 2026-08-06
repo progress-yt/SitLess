@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { getDateKey, getRecentDateKeys, getScheduleStatus, parseTimeToMinutes, secondsUntil } from '../shared/schedule';
+import { clampNumber, getDateKey, getRecentDateKeys, getScheduleStatus, parseTimeToMinutes, secondsUntil } from '../shared/schedule';
 import { evaluateReminderEngine } from '../shared/reminderEngine';
 import { getWorkdayGateStatus } from '../shared/workday';
 import { systemReminderClock, type ReminderClock, type ReminderTimerHandle } from './reminderClock';
@@ -217,7 +217,7 @@ export class ReminderController extends EventEmitter {
     this.phase = 'running';
     this.snoozeUntil = null;
     this.fullscreenRestStartedAt = null;
-    const durationMinutes = Math.max(1, Math.floor(minutes));
+    const durationMinutes = clampNumber(Math.floor(Number(minutes)), 1, 240);
     this.runtimeStateStore.setPauseUntil(new Date(now.getTime() + durationMinutes * 60 * 1000), now);
     this.resetCycle(now);
     this.tick();
@@ -285,6 +285,10 @@ export class ReminderController extends EventEmitter {
   }
 
   testReminderFlow(): AppSnapshot {
+    if (this.phase !== 'running') {
+      return this.snapshot;
+    }
+
     this.triggerReminder({
       countReminder: false,
       countOutcome: false
@@ -406,6 +410,22 @@ export class ReminderController extends EventEmitter {
     this.phase = 'snoozed';
     this.snoozeUntil = now.getTime() + settings.snoozeMinutes * 60 * 1000;
     this.tick();
+  }
+
+  handleReminderWindowClosed(view: 'countdown' | 'fullscreen'): void {
+    if (view === 'countdown' && this.phase === 'countdown') {
+      this.clearCountdownTimer();
+      this.snoozeReminder();
+      return;
+    }
+
+    if (view === 'fullscreen' && this.phase === 'fullscreen') {
+      if (this.fullscreenRestStartedAt !== null) {
+        this.interruptRest();
+      } else {
+        this.snoozeReminder();
+      }
+    }
   }
 
   private tick(): void {

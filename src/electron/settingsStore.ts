@@ -1,8 +1,8 @@
 import { app } from 'electron';
 import { join } from 'node:path';
 import { createDefaultSettings } from '../shared/defaults';
-import { cloneSettings, normalizeSettings } from '../shared/persistence';
-import type { AppSettings } from '../shared/types';
+import { applyEditableSettingsPatch, cloneSettings, normalizeSettings } from '../shared/persistence';
+import type { AppSettings, AppSettingsPatch } from '../shared/types';
 import { readJsonFile, writeJsonFile } from './jsonStore';
 
 export class SettingsStore {
@@ -19,11 +19,8 @@ export class SettingsStore {
     return cloneSettings(this.settings);
   }
 
-  update(next: AppSettings): AppSettings {
-    this.settings = normalizeSettings({
-      ...next,
-      updatedAtIso: new Date().toISOString()
-    });
+  update(patch: AppSettingsPatch): AppSettings {
+    this.settings = applyEditableSettingsPatch(this.settings, patch);
     this.persist();
     return this.get();
   }

@@ -80,8 +80,13 @@ async function verifyMainWindow(webSocketUrl) {
     'settings controls'
   );
 
-  await setNumberField(webSocketUrl, '加班无输入自动下班', 17);
-  await waitForStoredSettings((settings) => settings.overtimeAutoEndMinutes === 17);
+  await setNumberFieldsTogether(webSocketUrl, [
+    { label: '加班无输入自动下班', value: 17 },
+    { label: '倒计时', value: 4 }
+  ]);
+  await waitForStoredSettings((settings) =>
+    settings.overtimeAutoEndMinutes === 17 && settings.countdownSeconds === 4
+  );
   await clickButton(webSocketUrl, '详细记录');
   await waitForExpression(
     webSocketUrl,
@@ -184,6 +189,28 @@ async function setNumberField(webSocketUrl, label, value) {
   await sendCdpCommand(webSocketUrl, 'Input.insertText', {
     text: String(value)
   });
+}
+
+async function setNumberFieldsTogether(webSocketUrl, updates) {
+  const updated = await evaluate(webSocketUrl, `(() => {
+    const updates = ${JSON.stringify(updates)};
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    return updates.every(({ label, value }) => {
+      const field = [...document.querySelectorAll('label')].find((candidate) =>
+        candidate.querySelector('span')?.textContent?.trim() === label
+      );
+      const input = field?.querySelector('input[type="number"]');
+      if (!(input instanceof HTMLInputElement) || !setter) {
+        return false;
+      }
+      setter.call(input, String(value));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    });
+  })()`);
+  if (!updated) {
+    throw new Error('Could not update settings fields together');
+  }
 }
 
 async function waitForStoredSettings(predicate) {

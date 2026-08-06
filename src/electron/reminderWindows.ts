@@ -1,19 +1,24 @@
-import { BrowserWindow, dialog, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, screen, shell } from 'electron';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../shared/ipc';
 import type { AppSnapshot } from '../shared/types';
 import { sendIpc } from './typedIpc';
+import { getTrustedDevServerUrl } from './rendererSecurity';
 
 type RendererView = 'main' | 'countdown' | 'fullscreen';
+type ReminderWindowView = Exclude<RendererView, 'main'>;
 
 export class ReminderWindows {
   private mainWindow: BrowserWindow | null = null;
   private countdownWindow: BrowserWindow | null = null;
   private fullscreenWindow: BrowserWindow | null = null;
+  private readonly intentionalClosures = new WeakSet<BrowserWindow>();
+  private readonly handledClosures = new WeakSet<BrowserWindow>();
 
   constructor(
     private readonly isQuitting: () => boolean,
-    private readonly isSoundEnabled: () => boolean
+    private readonly isSoundEnabled: () => boolean,
+    private readonly onUnexpectedReminderWindowClosed: (view: ReminderWindowView) => void
   ) {}
 
   createMain(): void {
@@ -70,6 +75,7 @@ export class ReminderWindows {
 
     this.countdownWindow.setAlwaysOnTop(true, 'screen-saver');
     this.countdownWindow.center();
+    this.trackReminderWindow(this.countdownWindow, 'countdown');
     this.loadRenderer(this.countdownWindow, 'countdown');
 
     if (this.isSoundEnabled()) {
@@ -78,10 +84,12 @@ export class ReminderWindows {
   }
 
   closeCountdown(): void {
-    if (this.countdownWindow && !this.countdownWindow.isDestroyed()) {
-      this.countdownWindow.close();
-    }
+    const window = this.countdownWindow;
     this.countdownWindow = null;
+    if (window && !window.isDestroyed()) {
+      this.intentionalClosures.add(window);
+      window.close();
+    }
   }
 
   showFullscreen(): void {
@@ -103,14 +111,17 @@ export class ReminderWindows {
     });
 
     this.fullscreenWindow.setAlwaysOnTop(true, 'screen-saver');
+    this.trackReminderWindow(this.fullscreenWindow, 'fullscreen');
     this.loadRenderer(this.fullscreenWindow, 'fullscreen');
   }
 
   closeFullscreen(): void {
-    if (this.fullscreenWindow && !this.fullscreenWindow.isDestroyed()) {
-      this.fullscreenWindow.close();
-    }
+    const window = this.fullscreenWindow;
     this.fullscreenWindow = null;
+    if (window && !window.isDestroyed()) {
+      this.intentionalClosures.add(window);
+      window.close();
+    }
   }
 
   showMessageBox(options: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
@@ -155,14 +166,43 @@ export class ReminderWindows {
     };
   }
 
+  private trackReminderWindow(window: BrowserWindow, view: ReminderWindowView): void {
+    const finalize = () => {
+      if (this.handledClosures.has(window)) {
+        return;
+      }
+      this.handledClosures.add(window);
+
+      if (view === 'countdown' && this.countdownWindow === window) {
+        this.countdownWindow = null;
+      }
+      if (view === 'fullscreen' && this.fullscreenWindow === window) {
+        this.fullscreenWindow = null;
+      }
+
+      if (!this.intentionalClosures.has(window) && !this.isQuitting()) {
+        this.onUnexpectedReminderWindowClosed(view);
+      }
+    };
+
+    window.once('closed', finalize);
+    window.webContents.once('render-process-gone', () => {
+      finalize();
+      if (!window.isDestroyed()) {
+        window.destroy();
+      }
+    });
+  }
+
   private loadRenderer(window: BrowserWindow, view: RendererView): void {
-    const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+    const devServerUrl = getTrustedDevServerUrl(process.env.VITE_DEV_SERVER_URL, app.isPackaged);
     if (devServerUrl) {
       void window.loadURL(`${devServerUrl}?view=${view}`);
       return;
     }
 
-    void window.loadFile(join(__dirname, '../../dist/index.html'), {
+    const rendererPath = join(__dirname, '../../dist/index.html');
+    void window.loadFile(rendererPath, {
       query: { view }
     });
   }
