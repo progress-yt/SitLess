@@ -18,8 +18,10 @@ import type {
   DaySession,
   FocusContextState,
   FullscreenRestState,
+  HistorySnapshot,
   ReminderRuntimeState,
-  StatsOverview
+  StatsOverview,
+  TrendPoint
 } from '../shared/types';
 
 const MANUAL_POEM_REFRESH_COOLDOWN_SECONDS = 60;
@@ -106,6 +108,7 @@ export class ReminderController extends EventEmitter {
   private lastManualPoemRefreshAtMs: number | null = null;
   private cachedDailyRecords: DailyDetailRecord[] | null = null;
   private cachedStatsOverview: StatsOverview | null = null;
+  private cachedTrend: TrendPoint[] | null = null;
   private cachedRecordsDateKey: string | null = null;
   private recordsCacheDirty = true;
 
@@ -160,6 +163,13 @@ export class ReminderController extends EventEmitter {
 
   getSnapshot(): AppSnapshot {
     return this.snapshot;
+  }
+
+  getHistory(): HistorySnapshot {
+    return {
+      dailyRecords: this.snapshot.dailyRecords,
+      trend: this.snapshot.trend
+    };
   }
 
   refresh(): void {
@@ -775,22 +785,25 @@ export class ReminderController extends EventEmitter {
       this.recordsCacheDirty ||
       this.cachedRecordsDateKey !== todayDateKey ||
       this.cachedStatsOverview === null ||
-      this.cachedDailyRecords === null
+      this.cachedDailyRecords === null ||
+      this.cachedTrend === null
     ) {
       this.cachedStatsOverview = this.statsStore.getOverview(now);
       this.cachedDailyRecords = this.buildDailyRecords(now);
+      this.cachedTrend = createTrendPoints(this.statsStore.getRecentDays(14, now), now, 14);
       this.cachedRecordsDateKey = todayDateKey;
       this.recordsCacheDirty = false;
     }
 
+    const todayStats = this.statsStore.getToday(now);
     return {
       nowIso: now.toISOString(),
       status,
       settings,
-      todayStats: this.statsStore.getToday(now),
+      todayStats,
       statsOverview: this.cachedStatsOverview!,
       dailyRecords: this.cachedDailyRecords!,
-      trend: createTrendPoints(this.statsStore.getRecentDays(14, now), now, 14),
+      trend: this.cachedTrend!,
       canRunReminders: workdayGate.canRunReminders,
       scheduleReason: schedule.reason,
       remainingSeconds: resolvedRemainingSeconds,
@@ -801,7 +814,7 @@ export class ReminderController extends EventEmitter {
       isOvertime,
       overtimeAutoEndSeconds: isOvertime ? Math.max(0, settings.overtimeAutoEndMinutes * 60 - idleSeconds) : null,
       consecutiveSnoozes: this.consecutiveSnoozes,
-      currentCompletionStreak: this.statsStore.getToday(now).currentCompletionStreak,
+      currentCompletionStreak: todayStats.currentCompletionStreak,
       imageFallbackActive: this.deps.isImageFallbackActive(),
       daySession,
       dailyPoem: this.poemStore.getToday(now),

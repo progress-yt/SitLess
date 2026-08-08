@@ -15,7 +15,7 @@ import {
   TimerReset,
   TrendingUp
 } from 'lucide-react';
-import type { AppSnapshot, StatsPeriod, StatsSummary } from '../shared/types';
+import type { AppSnapshot, HistorySnapshot, StatsPeriod, StatsSummary } from '../shared/types';
 import { sitlessApi } from './api';
 import { RecordsView } from './RecordsView';
 import { CountdownView, FullscreenView } from './ReminderViews';
@@ -54,7 +54,9 @@ export function App() {
         setSnapshot(next);
       }
     });
-    const unsubscribe = sitlessApi.onSnapshot(setSnapshot);
+    const unsubscribe = sitlessApi.onSnapshot((next) => {
+      setSnapshot((current) => current ? { ...current, ...next } : current);
+    });
     return () => {
       mounted = false;
       unsubscribe();
@@ -70,12 +72,21 @@ export function App() {
   if (view === 'fullscreen') {
     return <FullscreenView snapshot={snapshot} />;
   }
-  return <MainView snapshot={snapshot} />;
+  const applyHistory = (history: HistorySnapshot) => {
+    setSnapshot((current) => current ? { ...current, ...history } : current);
+  };
+  return <MainView snapshot={snapshot} onHistory={applyHistory} />;
 }
 
-function MainView({ snapshot }: { snapshot: AppSnapshot }) {
+function MainView({ snapshot, onHistory }: { snapshot: AppSnapshot; onHistory: (history: HistorySnapshot) => void }) {
   const [tab, setTab] = useState<MainTab>('home');
   const statusTone = getStatusTone(snapshot.status);
+  const selectTab = (next: MainTab) => {
+    setTab(next);
+    if (next === 'records' || next === 'trend') {
+      void sitlessApi.getHistory().then(onHistory);
+    }
+  };
 
   return (
     <main className="app-shell">
@@ -92,19 +103,19 @@ function MainView({ snapshot }: { snapshot: AppSnapshot }) {
 
         <div className="header-actions">
           <div className="segmented-control" role="tablist" aria-label="主界面">
-            <button type="button" className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')}>
+            <button type="button" className={tab === 'home' ? 'active' : ''} onClick={() => selectTab('home')}>
               <Home size={16} />
               状态
             </button>
-            <button type="button" className={tab === 'records' ? 'active' : ''} onClick={() => setTab('records')}>
+            <button type="button" className={tab === 'records' ? 'active' : ''} onClick={() => selectTab('records')}>
               <Table2 size={16} />
               详细记录
             </button>
-            <button type="button" className={tab === 'trend' ? 'active' : ''} onClick={() => setTab('trend')}>
+            <button type="button" className={tab === 'trend' ? 'active' : ''} onClick={() => selectTab('trend')}>
               <ChartNoAxesCombined size={16} />
               趋势
             </button>
-            <button type="button" className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>
+            <button type="button" className={tab === 'settings' ? 'active' : ''} onClick={() => selectTab('settings')}>
               <Settings2 size={16} />
               设置
             </button>
@@ -128,7 +139,7 @@ function MainView({ snapshot }: { snapshot: AppSnapshot }) {
         : tab === 'trend'
           ? <TrendView snapshot={snapshot} />
         : tab === 'records'
-          ? <RecordsView snapshot={snapshot} />
+          ? <RecordsView snapshot={snapshot} onHistory={onHistory} />
           : <SettingsView snapshot={snapshot} />}
     </main>
   );

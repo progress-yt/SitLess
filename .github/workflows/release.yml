@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      SITLESS_UPDATE_URL: ${{ secrets.SITLESS_UPDATE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run release:check
+      - run: npm run dist
+      - name: Verify installer signature
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem -Path release -Filter '*.exe'
+          if ($installers.Count -eq 0) { throw 'No installer was produced.' }
+          $installers | ForEach-Object { signtool verify /pa /v $_.FullName }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sitless-${{ github.ref_name }}
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml

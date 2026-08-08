@@ -8,7 +8,9 @@ SitLess 的设置、统计、工作日记录和运行状态保存在 Electron `u
 
 - 完整 JSON 备份与导入。导入后需重启应用。
 - 统计 CSV 导出，文件带 UTF-8 BOM，可直接由 Excel 打开。
-- 诊断 JSON 导出，包含版本、运行环境、规范化设置、运行状态和最近日志。诊断文件可能包含工作时段等本地配置，提交给他人前应先检查内容。
+- 诊断 JSON 导出，包含版本、运行环境、规范化设置、运行状态和最近日志。导出时会隐藏用户目录与自定义图片路径；工作时段等配置仍可能敏感，提交给他人前应先检查内容。
+
+诊断日志超过 512 KB 后会轮转到 `sitless.1.log`，最多保留当前日志和一个历史日志。
 
 ## 自动更新
 
@@ -33,3 +35,13 @@ npm run dist
 ```
 
 发布流水线应在上传前验证安装包签名，例如使用 Windows SDK 的 `signtool verify /pa /v <installer>`。当前仓库只提供签名和更新基础设施，不包含证书或生产更新服务器。
+
+## 发布流水线
+
+推送 `v*` 标签会触发 `.github/workflows/release.yml`。仓库需要配置 `CSC_LINK`、`CSC_KEY_PASSWORD` 和 `SITLESS_UPDATE_URL` 三个 Actions secrets。流水线会依次执行测试、构建、发布配置检查、安装包构建和签名验证，再上传安装包、blockmap 与 `latest.yml`。
+
+本地可在构建安装包前单独检查环境：
+
+```powershell
+npm run release:check
+```

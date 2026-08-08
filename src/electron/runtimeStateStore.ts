@@ -26,39 +26,46 @@ export class RuntimeStateStore {
   }
 
   setPauseUntil(date: Date | null, currentDate = new Date()): ReminderRuntimeState {
-    this.state = normalizeRuntimeState({
+    return this.updateState({
       ...this.state,
       pauseUntilIso: date?.toISOString() ?? null
-    });
-    this.persist();
-    return this.get(currentDate);
+    }, currentDate);
   }
 
   muteToday(date = new Date()): ReminderRuntimeState {
-    this.state = normalizeRuntimeState({
+    return this.updateState({
       ...this.state,
       mutedDateKey: getDateKey(date)
-    });
-    this.persist();
-    return this.get(date);
+    }, date);
   }
 
   clearMute(date = new Date()): ReminderRuntimeState {
-    this.state = normalizeRuntimeState({
+    return this.updateState({
       ...this.state,
       mutedDateKey: null
-    });
-    this.persist();
-    return this.get(date);
+    }, date);
   }
 
   setSession(patch: Partial<ReminderRuntimeState>, date = new Date()): ReminderRuntimeState {
-    this.state = normalizeRuntimeState({ ...this.state, ...patch });
-    this.persist();
+    return this.updateState({ ...this.state, ...patch }, date);
+  }
+
+  private updateState(value: unknown, date: Date): ReminderRuntimeState {
+    const next = normalizeRuntimeState(value);
+    if (!runtimeStatesEqual(next, this.state)) {
+      this.state = next;
+      this.persist();
+    }
     return this.get(date);
   }
 
   private persist(): void {
     writeJsonFile(this.filePath, this.state);
   }
+}
+
+function runtimeStatesEqual(left: ReminderRuntimeState, right: ReminderRuntimeState): boolean {
+  return Object.keys(left).every((key) => (
+    left[key as keyof ReminderRuntimeState] === right[key as keyof ReminderRuntimeState]
+  ));
 }

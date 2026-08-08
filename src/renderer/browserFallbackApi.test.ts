@@ -38,4 +38,24 @@ describe('browser fallback API', () => {
     expect(updated.activeThresholdMinutes).toBe(initial.settings.activeThresholdMinutes);
     expect(updated.customReminderImagePath).toBeNull();
   });
+
+  it('loads history separately from realtime snapshots', async () => {
+    const history = await createBrowserFallbackApi().getHistory();
+
+    expect(history.dailyRecords).toHaveLength(1);
+    expect(history.trend).toHaveLength(14);
+  });
+
+  it('emits update state events and supports unsubscribe', async () => {
+    const api = createBrowserFallbackApi();
+    const states = [] as Awaited<ReturnType<typeof api.getUpdateState>>[];
+    const unsubscribe = api.onUpdateState((state) => states.push(state));
+
+    await api.checkForUpdates();
+    unsubscribe();
+    await api.checkForUpdates();
+
+    expect(states).toHaveLength(1);
+    expect(states[0].status).toBe('unavailable');
+  });
 });

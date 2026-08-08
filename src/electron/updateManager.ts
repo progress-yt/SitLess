@@ -1,8 +1,9 @@
+import { EventEmitter } from 'node:events';
 import { app } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import type { UpdateState } from '../shared/types';
 
-export class UpdateManager {
+export class UpdateManager extends EventEmitter {
   private state: UpdateState = {
     status: 'unavailable',
     currentVersion: app.getVersion(),
@@ -12,13 +13,14 @@ export class UpdateManager {
   private enabled = false;
 
   constructor() {
+    super();
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.on('checking-for-update', () => this.patch({ status: 'checking', message: null }));
-    autoUpdater.on('update-available', (info) => this.patch({ status: 'available', availableVersion: info.version }));
-    autoUpdater.on('update-not-available', () => this.patch({ status: 'up-to-date', availableVersion: null }));
-    autoUpdater.on('update-downloaded', (info) => this.patch({ status: 'downloaded', availableVersion: info.version }));
-    autoUpdater.on('error', (error) => this.patch({ status: 'error', message: error.message }));
+    autoUpdater.on('checking-for-update', () => this.patchFromUpdater({ status: 'checking', message: null }));
+    autoUpdater.on('update-available', (info) => this.patchFromUpdater({ status: 'available', availableVersion: info.version }));
+    autoUpdater.on('update-not-available', () => this.patchFromUpdater({ status: 'up-to-date', availableVersion: null }));
+    autoUpdater.on('update-downloaded', (info) => this.patchFromUpdater({ status: 'downloaded', availableVersion: info.version }));
+    autoUpdater.on('error', (error) => this.patchFromUpdater({ status: 'error', message: error.message }));
   }
 
   initialize(enabled: boolean): void {
@@ -65,7 +67,17 @@ export class UpdateManager {
     return this.getState();
   }
 
+  private patchFromUpdater(patch: Partial<UpdateState>): void {
+    if (this.enabled) {
+      this.patch(patch);
+    }
+  }
+
   private patch(patch: Partial<UpdateState>): void {
-    this.state = { ...this.state, ...patch };
+    const next = { ...this.state, ...patch };
+    if (JSON.stringify(next) !== JSON.stringify(this.state)) {
+      this.state = next;
+      this.emit('state', this.getState());
+    }
   }
 }

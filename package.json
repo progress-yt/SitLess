@@ -15,6 +15,7 @@
     "preview:electron:fresh": "node scripts/electron-preview.mjs --fresh",
     "smoke:electron": "npm run build && node scripts/electron-smoke.mjs",
     "test": "vitest run",
+    "release:check": "node scripts/verify-release-config.mjs",
     "dist": "npm run build && set ELECTRON_BUILDER_CACHE=%CD%\\.cache\\electron-builder&& electron-builder"
   },
   "dependencies": {

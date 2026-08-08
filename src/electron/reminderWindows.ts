@@ -1,7 +1,8 @@
 import { app, BrowserWindow, dialog, screen, shell } from 'electron';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../shared/ipc';
-import type { AppSnapshot } from '../shared/types';
+import type { RealtimeSnapshot, UpdateState } from '../shared/types';
+import type { WebContents } from 'electron';
 import { sendIpc } from './typedIpc';
 import { getTrustedDevServerUrl } from './rendererSecurity';
 
@@ -136,7 +137,19 @@ export class ReminderWindows {
       : dialog.showOpenDialog(options);
   }
 
-  broadcast(snapshot: AppSnapshot): void {
+  broadcast(snapshot: RealtimeSnapshot): void {
+    this.broadcastEvent((webContents) => {
+      sendIpc(webContents, IPC_CHANNELS.snapshotUpdate, snapshot);
+    });
+  }
+
+  broadcastUpdateState(state: UpdateState): void {
+    this.broadcastEvent((webContents) => {
+      sendIpc(webContents, IPC_CHANNELS.updateStateUpdate, state);
+    });
+  }
+
+  private broadcastEvent(send: (webContents: WebContents) => void): void {
     BrowserWindow.getAllWindows().forEach((window) => {
       if (
         window.isDestroyed() ||
@@ -151,7 +164,7 @@ export class ReminderWindows {
         if (window.webContents.mainFrame.detached) {
           return;
         }
-        sendIpc(window.webContents, IPC_CHANNELS.snapshotUpdate, snapshot);
+        send(window.webContents);
       } catch {
         // A reminder window can disappear between enumeration and IPC delivery.
       }

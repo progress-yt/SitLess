@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FilePenLine, Table2 } from 'lucide-react';
-import type { AppSnapshot } from '../shared/types';
+import type { AppSnapshot, HistorySnapshot } from '../shared/types';
 import { sitlessApi } from './api';
 import { formatClock, formatDuration, formatPercent } from './presentation';
 
@@ -17,7 +17,7 @@ interface RecordDraft {
   longestFocusSeconds: number;
 }
 
-export function RecordsView({ snapshot }: { snapshot: AppSnapshot }) {
+export function RecordsView({ snapshot, onHistory }: { snapshot: AppSnapshot; onHistory: (history: HistorySnapshot) => void }) {
   return (
     <section className="workspace-panel detail-records-panel">
       <div className="panel-heading">
@@ -28,12 +28,12 @@ export function RecordsView({ snapshot }: { snapshot: AppSnapshot }) {
         <Table2 size={20} />
       </div>
 
-      <DailyRecordsTable records={snapshot.dailyRecords} />
+      <DailyRecordsTable records={snapshot.dailyRecords} onHistory={onHistory} />
     </section>
   );
 }
 
-function DailyRecordsTable({ records }: { records: AppSnapshot['dailyRecords'] }) {
+function DailyRecordsTable({ records, onHistory }: { records: AppSnapshot['dailyRecords']; onHistory: (history: HistorySnapshot) => void }) {
   return (
     <div className="records-table-wrap">
       <table className="records-table">
@@ -56,7 +56,7 @@ function DailyRecordsTable({ records }: { records: AppSnapshot['dailyRecords'] }
         </thead>
         <tbody>
           {records.map((record) => (
-            <DailyRecordRow key={record.dateKey} record={record} />
+            <DailyRecordRow key={record.dateKey} record={record} onHistory={onHistory} />
           ))}
         </tbody>
       </table>
@@ -64,7 +64,7 @@ function DailyRecordsTable({ records }: { records: AppSnapshot['dailyRecords'] }
   );
 }
 
-function DailyRecordRow({ record }: { record: AppSnapshot['dailyRecords'][number] }) {
+function DailyRecordRow({ record, onHistory }: { record: AppSnapshot['dailyRecords'][number]; onHistory: (history: HistorySnapshot) => void }) {
   const [draft, setDraft] = useState(() => createRecordDraft(record));
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -84,7 +84,7 @@ function DailyRecordRow({ record }: { record: AppSnapshot['dailyRecords'][number
     setIsSaving(true);
     setSaveError(null);
     try {
-      await sitlessApi.updateDailyRecord({
+      const next = await sitlessApi.updateDailyRecord({
         dateKey: record.dateKey,
         workStatus: draft.workStatus,
         workStartedAtIso: combineDateAndTime(record.dateKey, draft.startTime),
@@ -97,6 +97,7 @@ function DailyRecordRow({ record }: { record: AppSnapshot['dailyRecords'][number
         restSeconds: draft.restSeconds,
         longestFocusSeconds: draft.longestFocusSeconds
       });
+      onHistory({ dailyRecords: next.dailyRecords, trend: next.trend });
       setIsEditing(false);
     } catch {
       setSaveError('保存失败，请重试。');

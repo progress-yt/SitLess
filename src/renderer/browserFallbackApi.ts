@@ -43,6 +43,13 @@ export function createBrowserFallbackApi(): SitlessApi {
   let snoozeUntilIso: string | null = null;
   let fullscreenRest: FullscreenRestState | null = null;
   const listeners = new Set<Parameters<SitlessApi['onSnapshot']>[0]>();
+  const updateListeners = new Set<Parameters<SitlessApi['onUpdateState']>[0]>();
+  const browserUpdateState = {
+    status: 'unavailable' as const,
+    currentVersion: 'browser-preview',
+    availableVersion: null,
+    message: '浏览器预览不支持自动更新'
+  };
 
   const getPoemRefreshRetryAfterSeconds = (now: Date): number => {
     if (lastPoemRefreshAtMs === null) {
@@ -108,6 +115,10 @@ export function createBrowserFallbackApi(): SitlessApi {
 
   return {
     getSnapshot: async () => createSnapshot(),
+    getHistory: async () => {
+      const snapshot = createSnapshot();
+      return { dailyRecords: snapshot.dailyRecords, trend: snapshot.trend };
+    },
     updateSettings: async (patch) => {
       settings = applyEditableSettingsPatch(settings, patch);
       emitSnapshot();
@@ -200,24 +211,12 @@ export function createBrowserFallbackApi(): SitlessApi {
     importDataJson: async () => ({ cancelled: true, path: null }),
     exportStatsCsv: async () => ({ cancelled: true, path: null }),
     exportDiagnostics: async () => ({ cancelled: true, path: null }),
-    getUpdateState: async () => ({
-      status: 'unavailable',
-      currentVersion: 'browser-preview',
-      availableVersion: null,
-      message: '浏览器预览不支持自动更新'
-    }),
-    checkForUpdates: async () => ({
-      status: 'unavailable',
-      currentVersion: 'browser-preview',
-      availableVersion: null,
-      message: '浏览器预览不支持自动更新'
-    }),
-    installUpdate: async () => ({
-      status: 'unavailable',
-      currentVersion: 'browser-preview',
-      availableVersion: null,
-      message: '浏览器预览不支持自动更新'
-    }),
+    getUpdateState: async () => browserUpdateState,
+    checkForUpdates: async () => {
+      updateListeners.forEach((listener) => listener(browserUpdateState));
+      return browserUpdateState;
+    },
+    installUpdate: async () => browserUpdateState,
     startWorkday: async () => {
       daySession = {
         status: 'working',
@@ -277,6 +276,10 @@ export function createBrowserFallbackApi(): SitlessApi {
     onSnapshot: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    onUpdateState: (listener) => {
+      updateListeners.add(listener);
+      return () => updateListeners.delete(listener);
     }
   };
 }

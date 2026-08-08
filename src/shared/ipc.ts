@@ -8,11 +8,14 @@ import type {
   DailyRecordCorrection,
   DataOperationResult,
   ImageSelectionResult,
+  HistorySnapshot,
+  RealtimeSnapshot,
   UpdateState
 } from './types';
 
 export const IPC_CHANNELS = {
   snapshotGet: 'snapshot:get',
+  historyGet: 'history:get',
   settingsUpdate: 'settings:update',
   imageSelect: 'image:select',
   imageReset: 'image:reset',
@@ -37,11 +40,13 @@ export const IPC_CHANNELS = {
   fullscreenStartRest: 'fullscreen:start-rest',
   fullscreenCompleteRest: 'fullscreen:complete-rest',
   fullscreenInterruptRest: 'fullscreen:interrupt-rest',
-  snapshotUpdate: 'snapshot:update'
+  snapshotUpdate: 'snapshot:update',
+  updateStateUpdate: 'update:state-update'
 } as const;
 
 export interface IpcInvokeContract {
   [IPC_CHANNELS.snapshotGet]: { args: []; result: AppSnapshot };
+  [IPC_CHANNELS.historyGet]: { args: []; result: HistorySnapshot };
   [IPC_CHANNELS.settingsUpdate]: { args: [patch: AppSettingsPatch]; result: AppSettings };
   [IPC_CHANNELS.imageSelect]: { args: []; result: ImageSelectionResult };
   [IPC_CHANNELS.imageReset]: { args: []; result: AppSettings };
@@ -72,7 +77,8 @@ export interface IpcSendContract {
 }
 
 export interface IpcEventContract {
-  [IPC_CHANNELS.snapshotUpdate]: [snapshot: AppSnapshot];
+  [IPC_CHANNELS.snapshotUpdate]: [snapshot: RealtimeSnapshot];
+  [IPC_CHANNELS.updateStateUpdate]: [state: UpdateState];
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeContract;
@@ -93,6 +99,7 @@ type SendMethod<Channel extends IpcSendChannel> = (
 
 export type SitlessApi = {
   getSnapshot: InvokeMethod<typeof IPC_CHANNELS.snapshotGet>;
+  getHistory: InvokeMethod<typeof IPC_CHANNELS.historyGet>;
   updateSettings: InvokeMethod<typeof IPC_CHANNELS.settingsUpdate>;
   selectReminderImage: InvokeMethod<typeof IPC_CHANNELS.imageSelect>;
   resetReminderImage: InvokeMethod<typeof IPC_CHANNELS.imageReset>;
@@ -118,4 +125,5 @@ export type SitlessApi = {
   completeRest: SendMethod<typeof IPC_CHANNELS.fullscreenCompleteRest>;
   interruptRest: SendMethod<typeof IPC_CHANNELS.fullscreenInterruptRest>;
   onSnapshot: (callback: (...args: IpcEventArgs<typeof IPC_CHANNELS.snapshotUpdate>) => void) => () => void;
+  onUpdateState: (callback: (...args: IpcEventArgs<typeof IPC_CHANNELS.updateStateUpdate>) => void) => () => void;
 };

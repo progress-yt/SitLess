@@ -255,6 +255,9 @@ export interface AppSnapshot {
   imageRevision: number;
 }
 
+export type RealtimeSnapshot = Omit<AppSnapshot, 'dailyRecords' | 'trend'>;
+export type HistorySnapshot = Pick<AppSnapshot, 'dailyRecords' | 'trend'>;
+
 export type CountdownAction = 'start-rest' | 'snooze' | 'skip' | 'timeout';
 
 export interface ImageSelectionResult {

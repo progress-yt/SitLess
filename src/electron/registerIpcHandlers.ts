@@ -5,6 +5,7 @@ import type { SettingsStore } from './settingsStore';
 import type { StartupPreferences } from './startupPreferences';
 import type { LocalDataManager } from './localDataManager';
 import type { UpdateManager } from './updateManager';
+import type { FocusContextDetector } from './focusContextDetector';
 import { handleIpc, listenIpc } from './typedIpc';
 
 interface IpcHandlerDependencies {
@@ -14,6 +15,7 @@ interface IpcHandlerDependencies {
   startupPreferences: StartupPreferences;
   localDataManager: LocalDataManager;
   updateManager: UpdateManager;
+  focusContextDetector: FocusContextDetector;
 }
 
 export function registerIpcHandlers({
@@ -22,9 +24,11 @@ export function registerIpcHandlers({
   images,
   startupPreferences,
   localDataManager,
-  updateManager
+  updateManager,
+  focusContextDetector
 }: IpcHandlerDependencies): void {
   handleIpc(IPC_CHANNELS.snapshotGet, () => controller.getSnapshot());
+  handleIpc(IPC_CHANNELS.historyGet, () => controller.getHistory());
 
   handleIpc(IPC_CHANNELS.settingsUpdate, (settings) => {
     const previous = settingsStore.get();
@@ -34,6 +38,9 @@ export function registerIpcHandlers({
     }
     if (previous.automaticUpdatesEnabled !== next.automaticUpdatesEnabled) {
       updateManager.initialize(next.automaticUpdatesEnabled);
+    }
+    if (previous.respectFocusContext !== next.respectFocusContext) {
+      focusContextDetector.setEnabled(next.respectFocusContext);
     }
     controller.handleSettingsChange(previous, next);
     return next;

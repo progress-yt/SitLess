@@ -31,9 +31,6 @@ export function writeJsonFile<T>(filePath: string, value: T): void {
   mkdirSync(dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp`;
   writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-  if (existsSync(filePath)) {
-    copyFileSync(filePath, `${filePath}.bak`);
-  }
+  copyFileSync(tempPath, `${filePath}.bak`);
   renameSync(tempPath, filePath);
-  copyFileSync(filePath, `${filePath}.bak`);
 }

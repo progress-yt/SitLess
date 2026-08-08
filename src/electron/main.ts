@@ -1,5 +1,6 @@
 import { app, Menu, powerMonitor } from 'electron';
-import type { AppSnapshot } from '../shared/types';
+import type { AppSnapshot, UpdateState } from '../shared/types';
+import { toRealtimeSnapshot } from '../shared/snapshot';
 import { DaySessionStore } from './daySessionStore';
 import { FocusContextDetector } from './focusContextDetector';
 import { LocalDataManager } from './localDataManager';
@@ -108,18 +109,20 @@ app.whenReady().then(() => {
     images,
     startupPreferences,
     localDataManager,
-    updateManager
+    updateManager,
+    focusContextDetector
   });
   updateManager.initialize(settingsStore.get().automaticUpdatesEnabled);
   windows.createMain();
   tray.create(activeController.getSnapshot());
 
   activeController.on('snapshot', (snapshot: AppSnapshot) => {
-    windows.broadcast(snapshot);
+    windows.broadcast(toRealtimeSnapshot(snapshot));
     tray.update(snapshot);
   });
+  updateManager.on('state', (state: UpdateState) => windows.broadcastUpdateState(state));
   activeController.start();
-  focusContextDetector.start();
+  focusContextDetector.setEnabled(settingsStore.get().respectFocusContext);
   void startupPreferences.maybeAsk();
 
   if (pendingRelaunchPrompt) {

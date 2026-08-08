@@ -14,6 +14,7 @@ type IpcChannels = typeof import('../shared/ipc').IPC_CHANNELS;
 // Sandboxed preloads cannot require local modules, so keep runtime channel values self-contained.
 const IPC_CHANNELS = {
   snapshotGet: 'snapshot:get',
+  historyGet: 'history:get',
   settingsUpdate: 'settings:update',
   imageSelect: 'image:select',
   imageReset: 'image:reset',
@@ -38,11 +39,13 @@ const IPC_CHANNELS = {
   fullscreenStartRest: 'fullscreen:start-rest',
   fullscreenCompleteRest: 'fullscreen:complete-rest',
   fullscreenInterruptRest: 'fullscreen:interrupt-rest',
-  snapshotUpdate: 'snapshot:update'
+  snapshotUpdate: 'snapshot:update',
+  updateStateUpdate: 'update:state-update'
 } as const satisfies IpcChannels;
 
 const api = {
   getSnapshot: () => invokeIpc(IPC_CHANNELS.snapshotGet),
+  getHistory: () => invokeIpc(IPC_CHANNELS.historyGet),
   updateSettings: (...args) => invokeIpc(IPC_CHANNELS.settingsUpdate, ...args),
   selectReminderImage: () => invokeIpc(IPC_CHANNELS.imageSelect),
   resetReminderImage: () => invokeIpc(IPC_CHANNELS.imageReset),
@@ -73,6 +76,13 @@ const api = {
     };
     ipcRenderer.on(IPC_CHANNELS.snapshotUpdate, listener);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.snapshotUpdate, listener);
+  },
+  onUpdateState: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => {
+      callback(...args as IpcEventArgs<typeof IPC_CHANNELS.updateStateUpdate>);
+    };
+    ipcRenderer.on(IPC_CHANNELS.updateStateUpdate, listener);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.updateStateUpdate, listener);
   }
 } satisfies SitlessApi;
 

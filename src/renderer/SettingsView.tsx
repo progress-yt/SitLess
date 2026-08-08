@@ -30,6 +30,7 @@ import type {
   WeekdayKey
 } from '../shared/types';
 import { sitlessApi } from './api';
+import { createScheduleOverrideDraft } from './scheduleOverrideDraft';
 import {
   getBuiltInReminderImageUrl,
   getModeDetail,
@@ -55,15 +56,12 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
   const latestSnapshotSettings = useRef(snapshot.settings);
   const latestSaveVersion = useRef(0);
   const pendingSaves = useRef(0);
+  const latestFailedSaveVersion = useRef<number | null>(null);
+  const deferredSaves = useRef(new Map<string, { timer: number; patch: AppSettingsPatch }>());
+  const isMounted = useRef(true);
   const [dataFeedback, setDataFeedback] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState | null>(null);
-  const [newOverride, setNewOverride] = useState<ScheduleOverride>({
-    dateKey: new Date().toISOString().slice(0, 10),
-    enabled: false,
-    start: '09:00',
-    end: '18:00',
-    label: ''
-  });
+  const [newOverride, setNewOverride] = useState<ScheduleOverride>(() => createScheduleOverrideDraft());
   latestSnapshotSettings.current = snapshot.settings;
 
   useEffect(() => {
@@ -82,30 +80,70 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
 
   useEffect(() => {
     void sitlessApi.getUpdateState().then(setUpdateState);
-    const timer = window.setInterval(() => void sitlessApi.getUpdateState().then(setUpdateState), 2500);
-    return () => window.clearInterval(timer);
+    return sitlessApi.onUpdateState(setUpdateState);
   }, []);
 
-  const save = (patch: AppSettingsPatch) => {
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      deferredSaves.current.forEach(({ timer, patch }) => {
+        window.clearTimeout(timer);
+        void sitlessApi.updateSettings(patch);
+      });
+      deferredSaves.current.clear();
+    };
+  }, []);
+
+  const persist = (patch: AppSettingsPatch, pendingAlreadyTracked = false) => {
     const saveVersion = latestSaveVersion.current + 1;
     latestSaveVersion.current = saveVersion;
-    pendingSaves.current += 1;
-    setSettings((current) => applyEditableSettingsPatch(current, patch));
+    if (!pendingAlreadyTracked) {
+      pendingSaves.current += 1;
+    }
 
     void sitlessApi.updateSettings(patch)
       .then((next) => {
-        if (saveVersion === latestSaveVersion.current) {
+        if (isMounted.current && saveVersion === latestSaveVersion.current && pendingSaves.current === 1) {
           setSettings(cloneSettings(next));
         }
       })
       .catch(() => {
         if (saveVersion === latestSaveVersion.current) {
-          setSettings(cloneSettings(latestSnapshotSettings.current));
+          latestFailedSaveVersion.current = saveVersion;
         }
       })
       .finally(() => {
         pendingSaves.current = Math.max(0, pendingSaves.current - 1);
+        if (
+          isMounted.current
+          && pendingSaves.current === 0
+          && latestFailedSaveVersion.current === latestSaveVersion.current
+        ) {
+          latestFailedSaveVersion.current = null;
+          setSettings(cloneSettings(latestSnapshotSettings.current));
+        }
       });
+  };
+
+  const save = (patch: AppSettingsPatch) => {
+    setSettings((current) => applyEditableSettingsPatch(current, patch));
+    persist(patch);
+  };
+
+  const saveDeferred = (key: string, patch: AppSettingsPatch) => {
+    setSettings((current) => applyEditableSettingsPatch(current, patch));
+    const existing = deferredSaves.current.get(key);
+    if (existing) {
+      window.clearTimeout(existing.timer);
+    } else {
+      pendingSaves.current += 1;
+    }
+    const timer = window.setTimeout(() => {
+      deferredSaves.current.delete(key);
+      persist(patch, true);
+    }, 400);
+    deferredSaves.current.set(key, { timer, patch });
   };
 
   const update = (patch: AppSettingsPatch) => {
@@ -182,7 +220,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
                   min={1}
                   max={240}
                   value={settings.activeThresholdMinutes}
-                  onChange={(value) => update({ activeThresholdMinutes: value })}
+                  onChange={(value) => saveDeferred('activeThresholdMinutes', { activeThresholdMinutes: value })}
                 />
                 <NumberField
                   label="无输入重置"
@@ -190,7 +228,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
                   min={1}
                   max={60}
                   value={settings.idleResetMinutes}
-                  onChange={(value) => update({ idleResetMinutes: value })}
+                  onChange={(value) => saveDeferred('idleResetMinutes', { idleResetMinutes: value })}
                 />
               </>
             ) : (
@@ -200,7 +238,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
                 min={1}
                 max={240}
                 value={settings.fixedIntervalMinutes}
-                onChange={(value) => update({ fixedIntervalMinutes: value })}
+                onChange={(value) => saveDeferred('fixedIntervalMinutes', { fixedIntervalMinutes: value })}
               />
             )}
           </div>
@@ -219,7 +257,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
               min={1}
               max={240}
               value={settings.snoozeMinutes}
-              onChange={(value) => update({ snoozeMinutes: value })}
+              onChange={(value) => saveDeferred('snoozeMinutes', { snoozeMinutes: value })}
             />
             <NumberField
               label="倒计时"
@@ -227,7 +265,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
               min={3}
               max={120}
               value={settings.countdownSeconds}
-              onChange={(value) => update({ countdownSeconds: value })}
+              onChange={(value) => saveDeferred('countdownSeconds', { countdownSeconds: value })}
             />
             <label className="field">
               <span>提醒强度</span>
@@ -284,7 +322,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
             min={1}
             max={240}
             value={settings.workdayPromptSnoozeMinutes}
-            onChange={(value) => update({ workdayPromptSnoozeMinutes: value })}
+            onChange={(value) => saveDeferred('workdayPromptSnoozeMinutes', { workdayPromptSnoozeMinutes: value })}
           />
           <NumberField
             label="加班无输入自动下班"
@@ -292,7 +330,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
             min={15}
             max={240}
             value={settings.overtimeAutoEndMinutes}
-            onChange={(value) => update({ overtimeAutoEndMinutes: value })}
+            onChange={(value) => saveDeferred('overtimeAutoEndMinutes', { overtimeAutoEndMinutes: value })}
           />
         </div>
       </section>
@@ -394,7 +432,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
             type="text"
             maxLength={50}
             value={settings.restPromptText}
-            onChange={(event) => update({ restPromptText: event.target.value })}
+            onChange={(event) => saveDeferred('restPromptText', { restPromptText: event.target.value })}
           />
         </label>
 
@@ -418,7 +456,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
             min={10}
             max={1800}
             value={settings.minimumRestSeconds}
-            onChange={(value) => update({ minimumRestSeconds: value })}
+            onChange={(value) => saveDeferred('minimumRestSeconds', { minimumRestSeconds: value })}
           />
           <label className="field">
             <span>开始按钮</span>
@@ -426,7 +464,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
               type="text"
               maxLength={16}
               value={settings.restStartButtonText}
-              onChange={(event) => update({ restStartButtonText: event.target.value })}
+              onChange={(event) => saveDeferred('restStartButtonText', { restStartButtonText: event.target.value })}
             />
           </label>
           <label className="field">
@@ -435,7 +473,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
               type="text"
               maxLength={16}
               value={settings.restCompleteButtonText}
-              onChange={(event) => update({ restCompleteButtonText: event.target.value })}
+              onChange={(event) => saveDeferred('restCompleteButtonText', { restCompleteButtonText: event.target.value })}
             />
           </label>
           <label className="field">
@@ -444,7 +482,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
               type="text"
               maxLength={16}
               value={settings.restInterruptButtonText}
-              onChange={(event) => update({ restInterruptButtonText: event.target.value })}
+              onChange={(event) => saveDeferred('restInterruptButtonText', { restInterruptButtonText: event.target.value })}
             />
           </label>
         </div>
