@@ -10,7 +10,7 @@ export interface WorkdayGateStatus {
 export function getWorkdayGateStatus(date: Date, settings: AppSettings, daySession: DaySession): WorkdayGateStatus {
   const schedule = getScheduleStatus(date, settings);
 
-  if (schedule.reason === 'weekend' || schedule.reason === 'before-work') {
+  if (schedule.reason === 'weekend' || schedule.reason === 'day-off' || schedule.reason === 'before-work') {
     return { canRunReminders: false, status: 'outside-schedule', schedule };
   }
 

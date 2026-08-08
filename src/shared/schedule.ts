@@ -1,8 +1,18 @@
-import type { AppSettings } from './types';
+import type { AppSettings, DailyScheduleSettings, WeekdayKey } from './types';
 
 export interface ScheduleStatus {
   within: boolean;
-  reason: 'weekday' | 'weekend' | 'before-work' | 'after-work' | 'lunch';
+  reason: 'weekday' | 'weekend' | 'day-off' | 'before-work' | 'after-work' | 'lunch';
+}
+
+const WEEKDAY_KEYS: WeekdayKey[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+export function getEffectiveSchedule(date: Date, settings: AppSettings): DailyScheduleSettings {
+  const override = settings.scheduleOverrides.find((candidate) => candidate.dateKey === getDateKey(date));
+  if (override) {
+    return { enabled: override.enabled, start: override.start, end: override.end };
+  }
+  return settings.weeklySchedule[WEEKDAY_KEYS[date.getDay()]];
 }
 
 export function getDateKey(date: Date): string {
@@ -40,15 +50,16 @@ export function isInTimeRange(minutes: number, start: string, end: string): bool
 
 export function getScheduleStatus(date: Date, settings: AppSettings): ScheduleStatus {
   const day = date.getDay();
-  if (day === 0 || day === 6) {
-    return { within: false, reason: 'weekend' };
+  const dailySchedule = getEffectiveSchedule(date, settings);
+  if (!dailySchedule.enabled) {
+    return { within: false, reason: day === 0 || day === 6 ? 'weekend' : 'day-off' };
   }
 
   const minutes = getMinutesOfDay(date);
-  const workStart = parseTimeToMinutes(settings.workSchedule.start);
-  const workEnd = parseTimeToMinutes(settings.workSchedule.end);
+  const workStart = parseTimeToMinutes(dailySchedule.start);
+  const workEnd = parseTimeToMinutes(dailySchedule.end);
 
-  if (!isInTimeRange(minutes, settings.workSchedule.start, settings.workSchedule.end)) {
+  if (!isInTimeRange(minutes, dailySchedule.start, dailySchedule.end)) {
     if (workStart < workEnd) {
       return {
         within: false,

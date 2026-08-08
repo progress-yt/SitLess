@@ -58,6 +58,12 @@ export function FullscreenView({ snapshot }: { snapshot: AppSnapshot }) {
       <div className="fullscreen-caption">
         <span>{getFullscreenRestLabel(restState?.phase)}</span>
         <strong>{snapshot.settings.restPromptText}</strong>
+        {snapshot.restExercise ? (
+          <div className="rest-exercise">
+            <b>{snapshot.restExercise.title}</b>
+            <p>{snapshot.restExercise.instruction}</p>
+          </div>
+        ) : null}
       </div>
       <div className="fullscreen-actions">
         <button className="fullscreen-primary-action" type="button" disabled={isResting} onClick={primaryAction}>

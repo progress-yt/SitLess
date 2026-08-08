@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyDailyStats } from './defaults';
-import { createStatsOverview } from './stats';
+import { createStatsOverview, createTrendPoints } from './stats';
 import type { DailyStats } from './types';
 
 describe('stats overview', () => {
@@ -78,6 +78,20 @@ describe('stats overview', () => {
     }, new Date('2026-06-08T12:00:00'));
 
     expect(overview.day.activeDays).toBe(1);
+  });
+});
+
+describe('stats trends', () => {
+  it('returns chronological points including days without data', () => {
+    const points = createTrendPoints({
+      '2026-06-09': stats({ reminders: 4, completed: 3, restSeconds: 90, longestFocusSeconds: 1200 })
+    }, new Date('2026-06-10T12:00:00'), 3);
+
+    expect(points).toEqual([
+      { dateKey: '2026-06-08', completionRate: 0, restSeconds: 0, longestFocusSeconds: 0 },
+      { dateKey: '2026-06-09', completionRate: 0.75, restSeconds: 90, longestFocusSeconds: 1200 },
+      { dateKey: '2026-06-10', completionRate: 0, restSeconds: 0, longestFocusSeconds: 0 }
+    ]);
   });
 });
 

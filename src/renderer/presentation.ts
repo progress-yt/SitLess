@@ -11,6 +11,7 @@ import defaultReminderUrl from '../../assets/default-reminder.svg?url';
 import walkReminderUrl from '../../assets/default-reminder-walk.svg?url';
 import reminderPhoto1Url from '../../assets/reminder-photo-1.png?url';
 import reminderPhoto2Url from '../../assets/reminder-photo-2.png?url';
+import { getEffectiveSchedule } from '../shared/schedule';
 
 export type ViewName = 'main' | 'countdown' | 'fullscreen';
 
@@ -29,6 +30,7 @@ export const STATUS_DETAIL: Record<AppStatus, string> = {
   'idle-reset': '检测到离开电脑，等待新的键鼠活动',
   snoozed: '稍后会再次提醒',
   paused: '暂停结束后重新计时',
+  'context-paused': '检测到演示、全屏或会议场景，暂缓提醒',
   'muted-today': '下一个工作日恢复提醒',
   'off-work': '今天已停止提醒，可继续加班提醒',
   countdown: '提醒已触发',
@@ -43,6 +45,7 @@ const STATUS_LABELS: Record<AppStatus, string> = {
   'idle-reset': '等待键鼠活动',
   snoozed: '稍后提醒',
   paused: '已暂停',
+  'context-paused': '专注场景暂缓',
   'muted-today': '今日不再提醒',
   'off-work': '已下班',
   countdown: '等待处理',
@@ -72,7 +75,7 @@ export function getStatusTone(status: AppStatus): string {
   if (status === 'countdown' || status === 'fullscreen') {
     return 'tone-alert';
   }
-  if (status === 'paused' || status === 'snoozed' || status === 'muted-today' || status === 'off-work') {
+  if (status === 'paused' || status === 'context-paused' || status === 'snoozed' || status === 'muted-today' || status === 'off-work') {
     return 'tone-paused';
   }
   return 'tone-quiet';
@@ -115,10 +118,14 @@ export function getScheduleLabel(snapshot: AppSnapshot): string {
   if (snapshot.scheduleReason === 'weekend') {
     return '周末';
   }
+  if (snapshot.scheduleReason === 'day-off') {
+    return '今日休息';
+  }
   if (snapshot.scheduleReason === 'lunch') {
     return `${snapshot.settings.workSchedule.lunch.start}-${snapshot.settings.workSchedule.lunch.end}`;
   }
-  return `${snapshot.settings.workSchedule.start}-${snapshot.settings.workSchedule.end}`;
+  const schedule = getEffectiveSchedule(new Date(snapshot.nowIso), snapshot.settings);
+  return `${schedule.start}-${schedule.end}`;
 }
 
 export function getWorkdayLabel(snapshot: AppSnapshot): string {

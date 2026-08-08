@@ -21,6 +21,32 @@ describe('schedule helpers', () => {
     });
   });
 
+  it('uses an enabled weekend schedule', () => {
+    const settings = createDefaultSettings();
+    settings.weeklySchedule.saturday = { enabled: true, start: '10:00', end: '16:00' };
+
+    expect(getScheduleStatus(new Date('2026-06-06T11:00:00'), settings)).toEqual({
+      within: true,
+      reason: 'weekday'
+    });
+  });
+
+  it('uses a date override before the weekly schedule', () => {
+    const settings = createDefaultSettings();
+    settings.scheduleOverrides = [{
+      dateKey: '2026-06-10',
+      enabled: false,
+      start: '09:00',
+      end: '18:00',
+      label: '调休'
+    }];
+
+    expect(getScheduleStatus(new Date('2026-06-10T10:00:00'), settings)).toEqual({
+      within: false,
+      reason: 'day-off'
+    });
+  });
+
   it('allows weekday work time outside lunch', () => {
     const settings = createDefaultSettings();
     expect(getScheduleStatus(new Date('2026-06-05T10:00:00'), settings)).toEqual({

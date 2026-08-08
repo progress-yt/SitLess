@@ -166,6 +166,12 @@ export class ReminderWindows {
     };
   }
 
+  showSaveDialog(options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> {
+    return this.mainWindow
+      ? dialog.showSaveDialog(this.mainWindow, options)
+      : dialog.showSaveDialog(options);
+  }
+
   private trackReminderWindow(window: BrowserWindow, view: ReminderWindowView): void {
     const finalize = () => {
       if (this.handledClosures.has(window)) {

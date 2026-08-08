@@ -3,6 +3,8 @@ import type { ReminderController } from './reminderController';
 import type { ReminderImages } from './reminderImages';
 import type { SettingsStore } from './settingsStore';
 import type { StartupPreferences } from './startupPreferences';
+import type { LocalDataManager } from './localDataManager';
+import type { UpdateManager } from './updateManager';
 import { handleIpc, listenIpc } from './typedIpc';
 
 interface IpcHandlerDependencies {
@@ -10,13 +12,17 @@ interface IpcHandlerDependencies {
   controller: ReminderController;
   images: ReminderImages;
   startupPreferences: StartupPreferences;
+  localDataManager: LocalDataManager;
+  updateManager: UpdateManager;
 }
 
 export function registerIpcHandlers({
   settingsStore,
   controller,
   images,
-  startupPreferences
+  startupPreferences,
+  localDataManager,
+  updateManager
 }: IpcHandlerDependencies): void {
   handleIpc(IPC_CHANNELS.snapshotGet, () => controller.getSnapshot());
 
@@ -25,6 +31,9 @@ export function registerIpcHandlers({
     const next = settingsStore.update(settings);
     if (previous.launchAtStartup !== next.launchAtStartup) {
       startupPreferences.apply(next);
+    }
+    if (previous.automaticUpdatesEnabled !== next.automaticUpdatesEnabled) {
+      updateManager.initialize(next.automaticUpdatesEnabled);
     }
     controller.handleSettingsChange(previous, next);
     return next;
@@ -59,6 +68,13 @@ export function registerIpcHandlers({
   handleIpc(IPC_CHANNELS.workdayStart, () => controller.startWorkday());
   handleIpc(IPC_CHANNELS.workdayEnd, () => controller.endWorkday());
   handleIpc(IPC_CHANNELS.recordsUpdate, (correction) => controller.updateDailyRecord(correction));
+  handleIpc(IPC_CHANNELS.dataExportJson, () => localDataManager.exportJson());
+  handleIpc(IPC_CHANNELS.dataImportJson, () => localDataManager.importJson());
+  handleIpc(IPC_CHANNELS.dataExportCsv, () => localDataManager.exportCsv());
+  handleIpc(IPC_CHANNELS.diagnosticsExport, () => localDataManager.exportDiagnostics());
+  handleIpc(IPC_CHANNELS.updateGetState, () => updateManager.getState());
+  handleIpc(IPC_CHANNELS.updateCheck, () => updateManager.check());
+  handleIpc(IPC_CHANNELS.updateInstall, () => updateManager.install());
 
   listenIpc(IPC_CHANNELS.countdownAction, (action) => controller.handleCountdownAction(action));
   listenIpc(IPC_CHANNELS.fullscreenStartRest, () => controller.startRest());

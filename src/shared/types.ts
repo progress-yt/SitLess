@@ -1,5 +1,6 @@
 export type ReminderMode = 'active' | 'fixed';
 export type ReminderStrength = 'gentle' | 'standard' | 'strong';
+export type WeekdayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
 export type AppStatus =
   | 'outside-schedule'
@@ -9,6 +10,7 @@ export type AppStatus =
   | 'idle-reset'
   | 'snoozed'
   | 'paused'
+  | 'context-paused'
   | 'muted-today'
   | 'off-work'
   | 'countdown'
@@ -37,9 +39,27 @@ export interface WorkScheduleSettings {
   lunch: LunchBreakSettings;
 }
 
+export interface DailyScheduleSettings {
+  enabled: boolean;
+  start: string;
+  end: string;
+}
+
+export type WeeklyScheduleSettings = Record<WeekdayKey, DailyScheduleSettings>;
+
+export interface ScheduleOverride {
+  dateKey: string;
+  enabled: boolean;
+  start: string;
+  end: string;
+  label: string;
+}
+
 export interface AppSettings {
   mode: ReminderMode;
   workSchedule: WorkScheduleSettings;
+  weeklySchedule: WeeklyScheduleSettings;
+  scheduleOverrides: ScheduleOverride[];
   activeThresholdMinutes: number;
   fixedIntervalMinutes: number;
   idleResetMinutes: number;
@@ -50,6 +70,9 @@ export interface AppSettings {
   reminderStrength: ReminderStrength;
   workdayPromptSnoozeMinutes: number;
   soundEnabled: boolean;
+  respectFocusContext: boolean;
+  guidedRestEnabled: boolean;
+  automaticUpdatesEnabled: boolean;
   launchAtStartup: boolean;
   hasSeenStartupPrompt: boolean;
   customReminderImagePath: string | null;
@@ -63,13 +86,15 @@ export interface AppSettings {
 
 type EditableAppSettings = Omit<
   AppSettings,
-  'workSchedule' | 'customReminderImagePath' | 'builtInReminderImageId' | 'updatedAtIso'
+  'workSchedule' | 'weeklySchedule' | 'scheduleOverrides' | 'customReminderImagePath' | 'builtInReminderImageId' | 'updatedAtIso'
 >;
 
 export type AppSettingsPatch = Partial<EditableAppSettings> & {
   workSchedule?: Partial<Omit<WorkScheduleSettings, 'lunch'>> & {
     lunch?: Partial<LunchBreakSettings>;
   };
+  weeklySchedule?: Partial<Record<WeekdayKey, Partial<DailyScheduleSettings>>>;
+  scheduleOverrides?: ScheduleOverride[];
 };
 
 export interface DailyStats {
@@ -126,6 +151,46 @@ export interface DaySession {
 export interface ReminderRuntimeState {
   pauseUntilIso: string | null;
   mutedDateKey: string | null;
+  cycleStartedAtIso: string | null;
+  snoozeUntilIso: string | null;
+  reminderStartedAtIso: string | null;
+  reminderPhase: 'running' | 'snoozed' | 'pending';
+  consecutiveSnoozes: number;
+}
+
+export interface RestExercise {
+  id: string;
+  title: string;
+  instruction: string;
+  target: 'eyes' | 'neck' | 'back' | 'legs' | 'breathing';
+}
+
+export interface TrendPoint {
+  dateKey: string;
+  completionRate: number;
+  restSeconds: number;
+  longestFocusSeconds: number;
+}
+
+export interface FocusContextState {
+  active: boolean;
+  reason: 'fullscreen-app' | 'meeting-app' | null;
+  appName: string | null;
+}
+
+export type UpdateStatus = 'disabled' | 'unavailable' | 'idle' | 'checking' | 'available' | 'downloaded' | 'up-to-date' | 'error';
+
+export interface UpdateState {
+  status: UpdateStatus;
+  currentVersion: string;
+  availableVersion: string | null;
+  message: string | null;
+}
+
+export interface DataOperationResult {
+  cancelled: boolean;
+  path: string | null;
+  restartRequired?: boolean;
 }
 
 export interface DailyPoem {
@@ -167,8 +232,9 @@ export interface AppSnapshot {
   todayStats: DailyStats;
   statsOverview: StatsOverview;
   dailyRecords: DailyDetailRecord[];
+  trend: TrendPoint[];
   canRunReminders: boolean;
-  scheduleReason: 'weekday' | 'weekend' | 'before-work' | 'after-work' | 'lunch';
+  scheduleReason: 'weekday' | 'weekend' | 'day-off' | 'before-work' | 'after-work' | 'lunch';
   remainingSeconds: number | null;
   countdownDurationSeconds: number | null;
   nextReminderAtIso: string | null;
@@ -183,6 +249,8 @@ export interface AppSnapshot {
   dailyPoem: DailyPoem | null;
   dailyPoemRefresh: DailyPoemRefreshState;
   fullscreenRest: FullscreenRestState | null;
+  restExercise: RestExercise | null;
+  focusContext: FocusContextState;
   idleSeconds: number;
   imageRevision: number;
 }

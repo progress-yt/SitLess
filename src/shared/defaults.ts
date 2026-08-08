@@ -6,10 +6,19 @@ import type {
   DailyStats,
   DaySession,
   ReminderRuntimeState,
+  RestExercise,
   StatsOverview,
   StatsPeriod,
   StatsSummary
 } from './types';
+
+export const REST_EXERCISES: RestExercise[] = [
+  { id: 'eyes-20', title: '远眺放松', instruction: '看向远处 20 秒，缓慢眨眼，让视线离开屏幕。', target: 'eyes' },
+  { id: 'neck-turn', title: '肩颈舒展', instruction: '放松双肩，头部缓慢向左右转动，各停留 5 秒。', target: 'neck' },
+  { id: 'back-open', title: '打开胸背', instruction: '双手在身后相扣，轻轻打开胸口并保持自然呼吸。', target: 'back' },
+  { id: 'leg-walk', title: '起身走动', instruction: '离开座位走动一分钟，让腿部重新活动起来。', target: 'legs' },
+  { id: 'breathing', title: '深呼吸', instruction: '吸气 4 秒、停留 2 秒、呼气 6 秒，重复三次。', target: 'breathing' }
+];
 
 export const DEFAULT_REST_PROMPT_OPTIONS = [
   '该起身活动一下了',
@@ -59,6 +68,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
       end: '13:30'
     }
   },
+  weeklySchedule: {
+    monday: { enabled: true, start: '09:00', end: '18:00' },
+    tuesday: { enabled: true, start: '09:00', end: '18:00' },
+    wednesday: { enabled: true, start: '09:00', end: '18:00' },
+    thursday: { enabled: true, start: '09:00', end: '18:00' },
+    friday: { enabled: true, start: '09:00', end: '18:00' },
+    saturday: { enabled: false, start: '09:00', end: '18:00' },
+    sunday: { enabled: false, start: '09:00', end: '18:00' }
+  },
+  scheduleOverrides: [],
   activeThresholdMinutes: 45,
   fixedIntervalMinutes: 45,
   idleResetMinutes: 5,
@@ -69,6 +88,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reminderStrength: 'standard',
   workdayPromptSnoozeMinutes: 15,
   soundEnabled: true,
+  respectFocusContext: true,
+  guidedRestEnabled: true,
+  automaticUpdatesEnabled: true,
   launchAtStartup: false,
   hasSeenStartupPrompt: false,
   customReminderImagePath: null,
@@ -100,7 +122,12 @@ export const EMPTY_DAY_SESSION: DaySession = {
 
 export const EMPTY_RUNTIME_STATE: ReminderRuntimeState = {
   pauseUntilIso: null,
-  mutedDateKey: null
+  mutedDateKey: null,
+  cycleStartedAtIso: null,
+  snoozeUntilIso: null,
+  reminderStartedAtIso: null,
+  reminderPhase: 'running',
+  consecutiveSnoozes: 0
 };
 
 export function createFallbackDailyPoem(dateKey: string): DailyPoem {
@@ -159,6 +186,10 @@ export function createDefaultSettings(): AppSettings {
       ...DEFAULT_SETTINGS.workSchedule,
       lunch: { ...DEFAULT_SETTINGS.workSchedule.lunch }
     },
+    weeklySchedule: Object.fromEntries(
+      Object.entries(DEFAULT_SETTINGS.weeklySchedule).map(([key, value]) => [key, { ...value }])
+    ) as AppSettings['weeklySchedule'],
+    scheduleOverrides: DEFAULT_SETTINGS.scheduleOverrides.map((override) => ({ ...override })),
     updatedAtIso: new Date().toISOString()
   };
 }

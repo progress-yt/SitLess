@@ -52,7 +52,27 @@ describe('settings persistence normalization', () => {
     const clone = cloneSettings(settings);
 
     clone.workSchedule.lunch.start = '11:30';
+    clone.weeklySchedule.monday.start = '07:30';
+    clone.scheduleOverrides.push({ dateKey: '2026-06-12', enabled: false, start: '09:00', end: '18:00', label: '调休' });
     expect(settings.workSchedule.lunch.start).not.toBe(clone.workSchedule.lunch.start);
+    expect(settings.weeklySchedule.monday.start).not.toBe(clone.weeklySchedule.monday.start);
+    expect(settings.scheduleOverrides).toHaveLength(0);
+  });
+
+  it('migrates a legacy shared schedule and normalizes date overrides', () => {
+    const settings = normalizeSettings({
+      workSchedule: { start: '08:30', end: '17:30' },
+      scheduleOverrides: [
+        { dateKey: '2026-06-13', enabled: true, start: '10:00', end: '16:00', label: ' 周末值班 ' },
+        { dateKey: 'invalid', enabled: false, start: '09:00', end: '18:00' }
+      ]
+    });
+
+    expect(settings.weeklySchedule.monday).toEqual({ enabled: true, start: '08:30', end: '17:30' });
+    expect(settings.weeklySchedule.sunday.enabled).toBe(false);
+    expect(settings.scheduleOverrides).toEqual([
+      { dateKey: '2026-06-13', enabled: true, start: '10:00', end: '16:00', label: '周末值班' }
+    ]);
   });
 
   it('keeps overtime auto-end independent and migrates its former field name', () => {
@@ -195,7 +215,27 @@ describe('runtime state normalization', () => {
 
     expect(active).toEqual({
       pauseUntilIso: null,
-      mutedDateKey: null
+      mutedDateKey: null,
+      cycleStartedAtIso: null,
+      snoozeUntilIso: null,
+      reminderStartedAtIso: null,
+      reminderPhase: 'running',
+      consecutiveSnoozes: 0
     });
+  });
+
+  it('keeps recoverable reminder session fields', () => {
+    const active = getActiveRuntimeState({
+      pauseUntilIso: null,
+      mutedDateKey: null,
+      cycleStartedAtIso: '2026-06-10T09:30:00.000Z',
+      snoozeUntilIso: '2026-06-10T10:15:00.000Z',
+      reminderStartedAtIso: '2026-06-10T10:00:00.000Z',
+      reminderPhase: 'snoozed',
+      consecutiveSnoozes: 2
+    }, new Date('2026-06-10T10:00:00.000Z'));
+
+    expect(active).toMatchObject({ reminderPhase: 'snoozed', consecutiveSnoozes: 2 });
+    expect(active.snoozeUntilIso).toBe('2026-06-10T10:15:00.000Z');
   });
 });

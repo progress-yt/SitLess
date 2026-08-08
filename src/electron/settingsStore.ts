@@ -37,6 +37,11 @@ export class SettingsStore {
           ...patch.workSchedule?.lunch
         }
       },
+      weeklySchedule: {
+        ...this.settings.weeklySchedule,
+        ...patch.weeklySchedule
+      },
+      scheduleOverrides: patch.scheduleOverrides ?? this.settings.scheduleOverrides,
       updatedAtIso: new Date().toISOString()
     });
     this.persist();

@@ -1,5 +1,6 @@
 import {
   DEFAULT_BUILT_IN_REMINDER_IMAGE_ID,
+  REST_EXERCISES,
   createDefaultSettings,
   createEmptyDailyStats,
   createEmptyDaySession,
@@ -8,6 +9,7 @@ import {
 } from '../shared/defaults';
 import { clampNumber, getDateKey } from '../shared/schedule';
 import { applyEditableSettingsPatch } from '../shared/persistence';
+import { createTrendPoints } from '../shared/stats';
 import type { SitlessApi } from '../shared/ipc';
 import type {
   AppSettings,
@@ -68,6 +70,7 @@ export function createBrowserFallbackApi(): SitlessApi {
       todayStats: createEmptyDailyStats(),
       statsOverview: createEmptyStatsOverview(dateKey),
       dailyRecords: getDailyRecords(dateKey, daySession, dailyRecords),
+      trend: createTrendPoints({}, now, 14),
       canRunReminders: daySession.status === 'working' && !mutedToday,
       scheduleReason: 'weekday',
       remainingSeconds: getRemainingSeconds(status, now, pauseUntilIso, snoozeUntilIso, thresholdMinutes),
@@ -90,6 +93,8 @@ export function createBrowserFallbackApi(): SitlessApi {
         retryAfterSeconds
       },
       fullscreenRest,
+      restExercise: status === 'fullscreen' && settings.guidedRestEnabled ? REST_EXERCISES[0] : null,
+      focusContext: { active: false, reason: null, appName: null },
       idleSeconds: 0,
       imageRevision: 0
     };
@@ -191,6 +196,28 @@ export function createBrowserFallbackApi(): SitlessApi {
       dailyRecords = upsertDailyRecord(dailyRecords, correction);
       return emitSnapshot();
     },
+    exportDataJson: async () => ({ cancelled: true, path: null }),
+    importDataJson: async () => ({ cancelled: true, path: null }),
+    exportStatsCsv: async () => ({ cancelled: true, path: null }),
+    exportDiagnostics: async () => ({ cancelled: true, path: null }),
+    getUpdateState: async () => ({
+      status: 'unavailable',
+      currentVersion: 'browser-preview',
+      availableVersion: null,
+      message: '浏览器预览不支持自动更新'
+    }),
+    checkForUpdates: async () => ({
+      status: 'unavailable',
+      currentVersion: 'browser-preview',
+      availableVersion: null,
+      message: '浏览器预览不支持自动更新'
+    }),
+    installUpdate: async () => ({
+      status: 'unavailable',
+      currentVersion: 'browser-preview',
+      availableVersion: null,
+      message: '浏览器预览不支持自动更新'
+    }),
     startWorkday: async () => {
       daySession = {
         status: 'working',

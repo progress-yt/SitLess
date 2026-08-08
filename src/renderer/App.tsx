@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   BriefcaseBusiness,
+  ChartNoAxesCombined,
   Clock3,
   Home,
   LogIn,
@@ -40,7 +41,7 @@ import {
   getWorkdayLabel
 } from './presentation';
 
-type MainTab = 'home' | 'records' | 'settings';
+type MainTab = 'home' | 'trend' | 'records' | 'settings';
 
 export function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
@@ -99,6 +100,10 @@ function MainView({ snapshot }: { snapshot: AppSnapshot }) {
               <Table2 size={16} />
               详细记录
             </button>
+            <button type="button" className={tab === 'trend' ? 'active' : ''} onClick={() => setTab('trend')}>
+              <ChartNoAxesCombined size={16} />
+              趋势
+            </button>
             <button type="button" className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>
               <Settings2 size={16} />
               设置
@@ -120,6 +125,8 @@ function MainView({ snapshot }: { snapshot: AppSnapshot }) {
 
       {tab === 'home'
         ? <HomeView snapshot={snapshot} />
+        : tab === 'trend'
+          ? <TrendView snapshot={snapshot} />
         : tab === 'records'
           ? <RecordsView snapshot={snapshot} />
           : <SettingsView snapshot={snapshot} />}
@@ -233,14 +240,16 @@ function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
         </div>
 
         <div className="quick-actions">
-          <button type="button" onClick={() => snapshot.status === 'paused' ? sitlessApi.resumeReminders() : sitlessApi.pauseForHour()}>
+          <button type="button" onClick={() => snapshot.status === 'paused' ? sitlessApi.resumeReminders() : sitlessApi.focusForMinutes(15)}>
             {snapshot.status === 'paused' ? <Play size={17} /> : <Pause size={17} />}
-            {snapshot.status === 'paused' ? '继续提醒' : '暂停 1 小时'}
+            {snapshot.status === 'paused' ? '继续提醒' : '免打扰 15 分钟'}
           </button>
-          <button type="button" onClick={() => sitlessApi.focusForMinutes(30)}>
-            <BriefcaseBusiness size={17} />
-            专注 30 分钟
-          </button>
+          {[30, 60, 120].map((minutes) => (
+            <button key={minutes} type="button" onClick={() => sitlessApi.focusForMinutes(minutes)}>
+              <BriefcaseBusiness size={17} />
+              {minutes < 60 ? `${minutes} 分钟` : `${minutes / 60} 小时`}
+            </button>
+          ))}
           <button type="button" onClick={() => sitlessApi.muteToday()}>
             <Power size={17} />
             今日不再提醒
@@ -248,6 +257,9 @@ function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
         </div>
         {snapshot.consecutiveSnoozes >= 3 ? (
           <p className="nudge-text">已连续稍后 {snapshot.consecutiveSnoozes} 次，可以临时暂停 1 小时。</p>
+        ) : null}
+        {snapshot.focusContext.active ? (
+          <p className="context-note">已检测到 {snapshot.focusContext.appName ?? '前台应用'}，提醒计时暂缓。</p>
         ) : null}
       </section>
 
@@ -280,6 +292,46 @@ function HomeView({ snapshot }: { snapshot: AppSnapshot }) {
         <StatsSummaryMeta summary={selectedStats} />
       </section>
     </div>
+  );
+}
+
+function TrendView({ snapshot }: { snapshot: AppSnapshot }) {
+  const maxRest = Math.max(1, ...snapshot.trend.map((point) => point.restSeconds));
+  const maxFocus = Math.max(1, ...snapshot.trend.map((point) => point.longestFocusSeconds));
+  return (
+    <section className="workspace-panel trend-panel">
+      <div className="panel-heading">
+        <div>
+          <span>最近 14 天</span>
+          <h3>休息与完成趋势</h3>
+        </div>
+        <TrendingUp size={20} />
+      </div>
+      <div className="trend-legend">
+        <span><i className="completion-swatch" />完成率</span>
+        <span><i className="rest-swatch" />休息时长</span>
+      </div>
+      <div className="trend-chart" aria-label="最近十四天趋势图">
+        {snapshot.trend.map((point) => (
+          <div className="trend-column" key={point.dateKey} title={`${point.dateKey} 完成 ${formatPercent(point.completionRate)}，休息 ${formatDuration(point.restSeconds)}，最长专注 ${formatDuration(point.longestFocusSeconds)}`}>
+            <div className="trend-bars">
+              <i className="trend-completion" style={{ height: `${Math.max(2, point.completionRate * 100)}%` }} />
+              <i className="trend-rest" style={{ height: `${Math.max(2, point.restSeconds / maxRest * 100)}%` }} />
+            </div>
+            <span>{point.dateKey.slice(5).replace('-', '/')}</span>
+          </div>
+        ))}
+      </div>
+      <div className="trend-focus-list">
+        {snapshot.trend.slice(-7).map((point) => (
+          <div key={point.dateKey}>
+            <span>{point.dateKey}</span>
+            <i><b style={{ width: `${point.longestFocusSeconds / maxFocus * 100}%` }} /></i>
+            <strong>{formatDuration(point.longestFocusSeconds)}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

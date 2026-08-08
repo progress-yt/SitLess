@@ -1,7 +1,10 @@
 import { app, Menu, powerMonitor } from 'electron';
 import type { AppSnapshot } from '../shared/types';
 import { DaySessionStore } from './daySessionStore';
+import { FocusContextDetector } from './focusContextDetector';
+import { LocalDataManager } from './localDataManager';
 import { DesktopPrompts } from './desktopPrompts';
+import { writeDiagnosticLog } from './diagnosticLog';
 import { PoemStore } from './poemStore';
 import { registerIpcHandlers } from './registerIpcHandlers';
 import { ReminderController } from './reminderController';
@@ -12,6 +15,7 @@ import { RuntimeStateStore } from './runtimeStateStore';
 import { SettingsStore } from './settingsStore';
 import { StartupPreferences } from './startupPreferences';
 import { StatsStore } from './statsStore';
+import { UpdateManager } from './updateManager';
 
 registerReminderImageScheme();
 
@@ -20,6 +24,7 @@ let controller: ReminderController | null = null;
 let desktopPrompts: DesktopPrompts | null = null;
 let isQuitting = false;
 let pendingRelaunchPrompt = false;
+const focusContextDetector = new FocusContextDetector();
 
 const windows = new ReminderWindows(
   () => isQuitting,
@@ -45,12 +50,15 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+  writeDiagnosticLog('app-ready', `version=${app.getVersion()}`);
   settingsStore = new SettingsStore();
   const statsStore = new StatsStore();
   const daySessionStore = new DaySessionStore();
   const runtimeStateStore = new RuntimeStateStore();
   const poemStore = new PoemStore();
   const images = new ReminderImages(settingsStore, windows);
+  const localDataManager = new LocalDataManager(windows);
+  const updateManager = new UpdateManager();
   desktopPrompts = new DesktopPrompts(settingsStore, windows);
 
   controller = new ReminderController(
@@ -67,7 +75,8 @@ app.whenReady().then(() => {
       closeCountdown: () => windows.closeCountdown(),
       openFullscreen: () => windows.showFullscreen(),
       closeFullscreen: () => windows.closeFullscreen(),
-      isImageFallbackActive: images.isFallbackActive
+      isImageFallbackActive: images.isFallbackActive,
+      getFocusContext: focusContextDetector.getState
     }
   );
 
@@ -93,7 +102,15 @@ app.whenReady().then(() => {
 
   images.registerProtocolHandler();
   startupPreferences.apply(settingsStore.get());
-  registerIpcHandlers({ settingsStore, controller: activeController, images, startupPreferences });
+  registerIpcHandlers({
+    settingsStore,
+    controller: activeController,
+    images,
+    startupPreferences,
+    localDataManager,
+    updateManager
+  });
+  updateManager.initialize(settingsStore.get().automaticUpdatesEnabled);
   windows.createMain();
   tray.create(activeController.getSnapshot());
 
@@ -102,6 +119,7 @@ app.whenReady().then(() => {
     tray.update(snapshot);
   });
   activeController.start();
+  focusContextDetector.start();
   void startupPreferences.maybeAsk();
 
   if (pendingRelaunchPrompt) {
@@ -115,8 +133,10 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  writeDiagnosticLog('app-before-quit');
   isQuitting = true;
   controller?.stop();
+  focusContextDetector.stop();
 });
 
 app.on('window-all-closed', () => undefined);

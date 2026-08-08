@@ -1,6 +1,6 @@
 import { createEmptyStatsSummary } from './defaults';
 import { getDateKey } from './schedule';
-import type { DailyStats, DailyStatsFile, StatsOverview, StatsPeriod, StatsSummary } from './types';
+import type { DailyStats, DailyStatsFile, StatsOverview, StatsPeriod, StatsSummary, TrendPoint } from './types';
 
 export type { DailyStatsFile } from './types';
 
@@ -84,6 +84,24 @@ function hasActivity(day: DailyStats): boolean {
     normalizeCount(day.restSeconds) +
     normalizeCount(day.longestFocusSeconds)
   ) > 0;
+}
+
+export function createTrendPoints(stats: DailyStatsFile, date = new Date(), limit = 14): TrendPoint[] {
+  const days = Math.max(1, Math.floor(limit));
+  return Array.from({ length: days }, (_value, index) => {
+    const current = startOfDay(date);
+    current.setDate(current.getDate() - (days - index - 1));
+    const dateKey = getDateKey(current);
+    const day = stats[dateKey];
+    const reminders = day ? normalizeCount(day.reminders) : 0;
+    const completed = day ? normalizeCount(day.completed) : 0;
+    return {
+      dateKey,
+      completionRate: reminders > 0 ? Math.min(1, completed / reminders) : 0,
+      restSeconds: day ? normalizeCount(day.restSeconds) : 0,
+      longestFocusSeconds: day ? normalizeCount(day.longestFocusSeconds) : 0
+    };
+  });
 }
 
 function normalizeCount(value: number): number {

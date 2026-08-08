@@ -9,14 +9,14 @@ import { ReminderController, getOvertimeEndDate, shouldPromptWorkdayStart } from
 describe('workday start prompt schedule', () => {
   it('does not prompt before the configured work start on a weekday', () => {
     const settings = createDefaultSettings();
-    settings.workSchedule.start = '10:00';
+    settings.weeklySchedule.friday.start = '10:00';
 
     expect(shouldPromptWorkdayStart(new Date('2026-06-05T09:59:00'), settings)).toBe(false);
   });
 
   it('prompts from the configured work start on a weekday', () => {
     const settings = createDefaultSettings();
-    settings.workSchedule.start = '10:00';
+    settings.weeklySchedule.friday.start = '10:00';
 
     expect(shouldPromptWorkdayStart(new Date('2026-06-05T10:00:00'), settings)).toBe(true);
   });
@@ -184,6 +184,54 @@ describe('reminder pause flow', () => {
 
     expect(() => controller.focusForMinutes(Number.POSITIVE_INFINITY)).not.toThrow();
     expect(controller.getSnapshot().remainingSeconds).toBe(240 * 60);
+  });
+});
+
+describe('runtime recovery and focus context', () => {
+  it('continues a persisted reminder cycle after restart', () => {
+    const clock = new ManualReminderClock(new Date('2026-06-10T10:00:00'));
+    const stores = createControllerStores(clock.now);
+    stores.runtimeState = {
+      ...createEmptyRuntimeState(),
+      cycleStartedAtIso: new Date('2026-06-10T09:30:00').toISOString()
+    };
+
+    const controller = createController(stores, {}, clock);
+    controller.refresh();
+
+    expect(controller.getSnapshot()).toMatchObject({ status: 'counting', remainingSeconds: 15 * 60 });
+  });
+
+  it('reopens an interrupted reminder as a normal countdown', () => {
+    const clock = new ManualReminderClock(new Date('2026-06-10T10:00:00'));
+    const stores = createControllerStores(clock.now);
+    stores.runtimeState = {
+      ...createEmptyRuntimeState(),
+      reminderStartedAtIso: new Date('2026-06-10T09:59:00').toISOString(),
+      reminderPhase: 'pending'
+    };
+    let countdownOpens = 0;
+    const controller = createController(stores, { openCountdown: () => { countdownOpens += 1; } }, clock);
+
+    controller.refresh();
+
+    expect(controller.getSnapshot().status).toBe('countdown');
+    expect(countdownOpens).toBe(1);
+  });
+
+  it('pauses reminder accumulation while a meeting app is active', () => {
+    const clock = new ManualReminderClock(new Date('2026-06-10T10:00:00'));
+    const stores = createControllerStores(clock.now);
+    const controller = createController(stores, {
+      getFocusContext: () => ({ active: true, reason: 'meeting-app', appName: 'Teams' })
+    }, clock);
+
+    controller.refresh();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'context-paused',
+      focusContext: { active: true, reason: 'meeting-app', appName: 'Teams' }
+    });
   });
 });
 
@@ -831,6 +879,7 @@ function createController(
     openFullscreen: () => void;
     closeFullscreen: () => void;
     isImageFallbackActive: () => boolean;
+    getFocusContext: () => { active: boolean; reason: 'fullscreen-app' | 'meeting-app' | null; appName: string | null };
   }> = {},
   clock?: ReminderClock
 ): ReminderController {
@@ -848,7 +897,8 @@ function createController(
       closeCountdown: depsOverride.closeCountdown ?? (() => undefined),
       openFullscreen: depsOverride.openFullscreen ?? (() => undefined),
       closeFullscreen: depsOverride.closeFullscreen ?? (() => undefined),
-      isImageFallbackActive: depsOverride.isImageFallbackActive ?? (() => false)
+      isImageFallbackActive: depsOverride.isImageFallbackActive ?? (() => false),
+      getFocusContext: depsOverride.getFocusContext
     },
     clock
   );
@@ -868,6 +918,12 @@ function createControllerStores(now: () => Date = () => new Date()) {
 
   return {
     settings,
+    get runtimeState() {
+      return runtimeState;
+    },
+    set runtimeState(next: ReminderRuntimeState) {
+      runtimeState = next;
+    },
     get poem() {
       return poem;
     },
@@ -988,6 +1044,10 @@ function createControllerStores(now: () => Date = () => new Date()) {
           ...runtimeState,
           mutedDateKey: null
         };
+        return runtimeState;
+      },
+      setSession: (patch: Partial<ReminderRuntimeState>) => {
+        runtimeState = { ...runtimeState, ...patch };
         return runtimeState;
       }
     },

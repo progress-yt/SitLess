@@ -16,11 +16,15 @@ import type {
   DailyStatsFile,
   DaySession,
   DaySessionFile,
-  ReminderRuntimeState
+  ReminderRuntimeState,
+  ScheduleOverride,
+  WeekdayKey,
+  WeeklyScheduleSettings
 } from './types';
 
 const REST_PROMPT_MAX_LENGTH = 50;
 const REST_BUTTON_MAX_LENGTH = 16;
+const WEEKDAY_KEYS: WeekdayKey[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 export function normalizeSettings(value: unknown): AppSettings {
   const defaults = createDefaultSettings();
@@ -33,18 +37,21 @@ export function normalizeSettings(value: unknown): AppSettings {
   const normalizedLunchStart = normalizeTimeString(lunch.start, defaults.workSchedule.lunch.start);
   const normalizedLunchEnd = normalizeTimeString(lunch.end, defaults.workSchedule.lunch.end);
   const hasSameDayLunch = parseTimeToMinutes(normalizedLunchStart) < parseTimeToMinutes(normalizedLunchEnd);
+  const normalizedWorkSchedule = {
+    start: hasSameDayWorkSchedule ? normalizedWorkStart : defaults.workSchedule.start,
+    end: hasSameDayWorkSchedule ? normalizedWorkEnd : defaults.workSchedule.end,
+    lunch: {
+      enabled: typeof lunch.enabled === 'boolean' ? lunch.enabled : defaults.workSchedule.lunch.enabled,
+      start: hasSameDayLunch ? normalizedLunchStart : defaults.workSchedule.lunch.start,
+      end: hasSameDayLunch ? normalizedLunchEnd : defaults.workSchedule.lunch.end
+    }
+  };
 
   return {
     mode: object.mode === 'fixed' ? 'fixed' : 'active',
-    workSchedule: {
-      start: hasSameDayWorkSchedule ? normalizedWorkStart : defaults.workSchedule.start,
-      end: hasSameDayWorkSchedule ? normalizedWorkEnd : defaults.workSchedule.end,
-      lunch: {
-        enabled: typeof lunch.enabled === 'boolean' ? lunch.enabled : defaults.workSchedule.lunch.enabled,
-        start: hasSameDayLunch ? normalizedLunchStart : defaults.workSchedule.lunch.start,
-        end: hasSameDayLunch ? normalizedLunchEnd : defaults.workSchedule.lunch.end
-      }
-    },
+    workSchedule: normalizedWorkSchedule,
+    weeklySchedule: normalizeWeeklySchedule(object.weeklySchedule, normalizedWorkSchedule, defaults.weeklySchedule),
+    scheduleOverrides: normalizeScheduleOverrides(object.scheduleOverrides),
     activeThresholdMinutes: clampNumber(Number(object.activeThresholdMinutes ?? defaults.activeThresholdMinutes), 1, 240),
     fixedIntervalMinutes: clampNumber(Number(object.fixedIntervalMinutes ?? defaults.fixedIntervalMinutes), 1, 240),
     idleResetMinutes: clampNumber(Number(object.idleResetMinutes ?? defaults.idleResetMinutes), 1, 60),
@@ -59,6 +66,11 @@ export function normalizeSettings(value: unknown): AppSettings {
     reminderStrength: normalizeReminderStrength(object.reminderStrength),
     workdayPromptSnoozeMinutes: clampNumber(Number(object.workdayPromptSnoozeMinutes ?? defaults.workdayPromptSnoozeMinutes), 1, 240),
     soundEnabled: typeof object.soundEnabled === 'boolean' ? object.soundEnabled : defaults.soundEnabled,
+    respectFocusContext: typeof object.respectFocusContext === 'boolean' ? object.respectFocusContext : defaults.respectFocusContext,
+    guidedRestEnabled: typeof object.guidedRestEnabled === 'boolean' ? object.guidedRestEnabled : defaults.guidedRestEnabled,
+    automaticUpdatesEnabled: typeof object.automaticUpdatesEnabled === 'boolean'
+      ? object.automaticUpdatesEnabled
+      : defaults.automaticUpdatesEnabled,
     launchAtStartup: typeof object.launchAtStartup === 'boolean' ? object.launchAtStartup : defaults.launchAtStartup,
     hasSeenStartupPrompt: typeof object.hasSeenStartupPrompt === 'boolean' ? object.hasSeenStartupPrompt : defaults.hasSeenStartupPrompt,
     customReminderImagePath: typeof object.customReminderImagePath === 'string' && object.customReminderImagePath
@@ -79,7 +91,11 @@ export function cloneSettings(settings: AppSettings): AppSettings {
     workSchedule: {
       ...settings.workSchedule,
       lunch: { ...settings.workSchedule.lunch }
-    }
+    },
+    weeklySchedule: Object.fromEntries(
+      WEEKDAY_KEYS.map((key) => [key, { ...settings.weeklySchedule[key] }])
+    ) as WeeklyScheduleSettings,
+    scheduleOverrides: settings.scheduleOverrides.map((override) => ({ ...override }))
   };
 }
 
@@ -98,6 +114,7 @@ export function applyEditableSettingsPatch(
   const candidateLunchStart = normalizeTimeString(lunchPatch.start, current.workSchedule.lunch.start);
   const candidateLunchEnd = normalizeTimeString(lunchPatch.end, current.workSchedule.lunch.end);
   const hasSameDayLunch = parseTimeToMinutes(candidateLunchStart) < parseTimeToMinutes(candidateLunchEnd);
+  const weeklySchedulePatch = isRecord(patch.weeklySchedule) ? patch.weeklySchedule : {};
 
   return normalizeSettings({
     ...current,
@@ -114,6 +131,22 @@ export function applyEditableSettingsPatch(
         end: hasSameDayLunch ? candidateLunchEnd : current.workSchedule.lunch.end
       }
     },
+    weeklySchedule: WEEKDAY_KEYS.reduce<WeeklyScheduleSettings>((result, key) => {
+      const dayPatch = isRecord(weeklySchedulePatch[key]) ? weeklySchedulePatch[key] : {};
+      const candidateStart = normalizeTimeString(dayPatch.start, current.weeklySchedule[key].start);
+      const candidateEnd = normalizeTimeString(dayPatch.end, current.weeklySchedule[key].end);
+      const validRange = parseTimeToMinutes(candidateStart) < parseTimeToMinutes(candidateEnd);
+      result[key] = {
+        ...current.weeklySchedule[key],
+        enabled: typeof dayPatch.enabled === 'boolean' ? dayPatch.enabled : current.weeklySchedule[key].enabled,
+        start: validRange ? candidateStart : current.weeklySchedule[key].start,
+        end: validRange ? candidateEnd : current.weeklySchedule[key].end
+      };
+      return result;
+    }, {} as WeeklyScheduleSettings),
+    scheduleOverrides: Array.isArray(patch.scheduleOverrides)
+      ? patch.scheduleOverrides
+      : current.scheduleOverrides,
     customReminderImagePath: current.customReminderImagePath,
     builtInReminderImageId: current.builtInReminderImageId,
     updatedAtIso: updatedAt.toISOString()
@@ -179,7 +212,14 @@ export function normalizeRuntimeState(value: unknown): ReminderRuntimeState {
     pauseUntilIso: normalizeIsoString(object.pauseUntilIso),
     mutedDateKey: typeof object.mutedDateKey === 'string' && isDateKey(object.mutedDateKey)
       ? object.mutedDateKey
-      : empty.mutedDateKey
+      : empty.mutedDateKey,
+    cycleStartedAtIso: normalizeIsoString(object.cycleStartedAtIso),
+    snoozeUntilIso: normalizeIsoString(object.snoozeUntilIso),
+    reminderStartedAtIso: normalizeIsoString(object.reminderStartedAtIso),
+    reminderPhase: object.reminderPhase === 'snoozed' || object.reminderPhase === 'pending'
+      ? object.reminderPhase
+      : empty.reminderPhase,
+    consecutiveSnoozes: clampNumber(Math.floor(Number(object.consecutiveSnoozes ?? 0)), 0, 999)
   };
 }
 
@@ -188,8 +228,66 @@ export function getActiveRuntimeState(value: unknown, date: Date): ReminderRunti
   const pauseUntilMs = state.pauseUntilIso ? new Date(state.pauseUntilIso).getTime() : Number.NaN;
   return {
     pauseUntilIso: Number.isFinite(pauseUntilMs) && pauseUntilMs > date.getTime() ? state.pauseUntilIso : null,
-    mutedDateKey: state.mutedDateKey === getDateKey(date) ? state.mutedDateKey : null
+    mutedDateKey: state.mutedDateKey === getDateKey(date) ? state.mutedDateKey : null,
+    cycleStartedAtIso: state.cycleStartedAtIso,
+    snoozeUntilIso: state.snoozeUntilIso,
+    reminderStartedAtIso: state.reminderStartedAtIso,
+    reminderPhase: state.reminderPhase,
+    consecutiveSnoozes: state.consecutiveSnoozes
   };
+}
+
+function normalizeWeeklySchedule(
+  value: unknown,
+  legacySchedule: AppSettings['workSchedule'],
+  defaults: WeeklyScheduleSettings
+): WeeklyScheduleSettings {
+  const object = isRecord(value) ? value : null;
+  return WEEKDAY_KEYS.reduce<WeeklyScheduleSettings>((result, key) => {
+    const fallback = object
+      ? defaults[key]
+      : {
+          enabled: key !== 'saturday' && key !== 'sunday',
+          start: legacySchedule.start,
+          end: legacySchedule.end
+        };
+    const candidate = object && isRecord(object[key]) ? object[key] : {};
+    const start = normalizeTimeString(candidate.start, fallback.start);
+    const end = normalizeTimeString(candidate.end, fallback.end);
+    const validRange = parseTimeToMinutes(start) < parseTimeToMinutes(end);
+    result[key] = {
+      enabled: typeof candidate.enabled === 'boolean' ? candidate.enabled : fallback.enabled,
+      start: validRange ? start : fallback.start,
+      end: validRange ? end : fallback.end
+    };
+    return result;
+  }, {} as WeeklyScheduleSettings);
+}
+
+function normalizeScheduleOverrides(value: unknown): ScheduleOverride[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const byDate = new Map<string, ScheduleOverride>();
+  value.forEach((candidate) => {
+    if (!isRecord(candidate) || typeof candidate.dateKey !== 'string' || !isDateKey(candidate.dateKey)) {
+      return;
+    }
+    const start = normalizeTimeString(candidate.start, '09:00');
+    const end = normalizeTimeString(candidate.end, '18:00');
+    if (parseTimeToMinutes(start) >= parseTimeToMinutes(end)) {
+      return;
+    }
+    byDate.set(candidate.dateKey, {
+      dateKey: candidate.dateKey,
+      enabled: typeof candidate.enabled === 'boolean' ? candidate.enabled : true,
+      start,
+      end,
+      label: typeof candidate.label === 'string' ? candidate.label.trim().slice(0, 30) : ''
+    });
+  });
+  return [...byDate.values()].sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 }
 
 export function normalizeCount(value: unknown): number {

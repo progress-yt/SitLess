@@ -52,6 +52,12 @@ export class RuntimeStateStore {
     return this.get(date);
   }
 
+  setSession(patch: Partial<ReminderRuntimeState>, date = new Date()): ReminderRuntimeState {
+    this.state = normalizeRuntimeState({ ...this.state, ...patch });
+    this.persist();
+    return this.get(date);
+  }
+
   private persist(): void {
     writeJsonFile(this.filePath, this.state);
   }

@@ -6,7 +6,9 @@ import type {
   CountdownAction,
   DailyPoemRefreshResult,
   DailyRecordCorrection,
-  ImageSelectionResult
+  DataOperationResult,
+  ImageSelectionResult,
+  UpdateState
 } from './types';
 
 export const IPC_CHANNELS = {
@@ -24,6 +26,13 @@ export const IPC_CHANNELS = {
   workdayStart: 'workday:start',
   workdayEnd: 'workday:end',
   recordsUpdate: 'records:update',
+  dataExportJson: 'data:export-json',
+  dataImportJson: 'data:import-json',
+  dataExportCsv: 'data:export-csv',
+  diagnosticsExport: 'diagnostics:export',
+  updateGetState: 'update:get-state',
+  updateCheck: 'update:check',
+  updateInstall: 'update:install',
   countdownAction: 'countdown:action',
   fullscreenStartRest: 'fullscreen:start-rest',
   fullscreenCompleteRest: 'fullscreen:complete-rest',
@@ -46,6 +55,13 @@ export interface IpcInvokeContract {
   [IPC_CHANNELS.workdayStart]: { args: []; result: AppSnapshot };
   [IPC_CHANNELS.workdayEnd]: { args: []; result: AppSnapshot };
   [IPC_CHANNELS.recordsUpdate]: { args: [correction: DailyRecordCorrection]; result: AppSnapshot };
+  [IPC_CHANNELS.dataExportJson]: { args: []; result: DataOperationResult };
+  [IPC_CHANNELS.dataImportJson]: { args: []; result: DataOperationResult };
+  [IPC_CHANNELS.dataExportCsv]: { args: []; result: DataOperationResult };
+  [IPC_CHANNELS.diagnosticsExport]: { args: []; result: DataOperationResult };
+  [IPC_CHANNELS.updateGetState]: { args: []; result: UpdateState };
+  [IPC_CHANNELS.updateCheck]: { args: []; result: UpdateState };
+  [IPC_CHANNELS.updateInstall]: { args: []; result: UpdateState };
 }
 
 export interface IpcSendContract {
@@ -90,6 +106,13 @@ export type SitlessApi = {
   startWorkday: InvokeMethod<typeof IPC_CHANNELS.workdayStart>;
   endWorkday: InvokeMethod<typeof IPC_CHANNELS.workdayEnd>;
   updateDailyRecord: InvokeMethod<typeof IPC_CHANNELS.recordsUpdate>;
+  exportDataJson: InvokeMethod<typeof IPC_CHANNELS.dataExportJson>;
+  importDataJson: InvokeMethod<typeof IPC_CHANNELS.dataImportJson>;
+  exportStatsCsv: InvokeMethod<typeof IPC_CHANNELS.dataExportCsv>;
+  exportDiagnostics: InvokeMethod<typeof IPC_CHANNELS.diagnosticsExport>;
+  getUpdateState: InvokeMethod<typeof IPC_CHANNELS.updateGetState>;
+  checkForUpdates: InvokeMethod<typeof IPC_CHANNELS.updateCheck>;
+  installUpdate: InvokeMethod<typeof IPC_CHANNELS.updateInstall>;
   countdownAction: SendMethod<typeof IPC_CHANNELS.countdownAction>;
   startRest: SendMethod<typeof IPC_CHANNELS.fullscreenStartRest>;
   completeRest: SendMethod<typeof IPC_CHANNELS.fullscreenCompleteRest>;
