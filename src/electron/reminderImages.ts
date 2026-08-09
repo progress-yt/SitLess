@@ -1,10 +1,11 @@
 import { app, net, protocol } from 'electron';
-import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
-import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BUILT_IN_REMINDER_IMAGES, DEFAULT_BUILT_IN_REMINDER_IMAGE_ID } from '../shared/defaults';
 import type { AppSettings, BuiltInReminderImageId, ImageSelectionResult } from '../shared/types';
 import type { ReminderWindows } from './reminderWindows';
+import { readValidatedReminderImage, REMINDER_IMAGE_EXTENSIONS } from './reminderImageValidation';
 
 const REMINDER_IMAGE_SCHEME = 'sitless';
 
@@ -68,7 +69,7 @@ export class ReminderImages {
       title: '选择提醒图片',
       properties: ['openFile'],
       filters: [
-        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] }
+        { name: 'Images', extensions: REMINDER_IMAGE_EXTENSIONS.map((extension) => extension.slice(1)) }
       ]
     });
 
@@ -77,15 +78,27 @@ export class ReminderImages {
     }
 
     const source = result.filePaths[0];
-    const extension = extname(source) || '.png';
+    const { extension, bytes } = readValidatedReminderImage(source);
     const targetDirectory = join(app.getPath('userData'), 'images');
     mkdirSync(targetDirectory, { recursive: true });
     const target = join(targetDirectory, `reminder${extension}`);
-    copyFileSync(source, target);
+    const tempTarget = `${target}.tmp`;
+    try {
+      writeFileSync(tempTarget, bytes);
+      renameSync(tempTarget, target);
+    } finally {
+      rmSync(tempTarget, { force: true });
+    }
+
+    const previousPath = this.settingsStore.get().customReminderImagePath;
+    const settings = this.settingsStore.patch({ customReminderImagePath: target });
+    if (previousPath && resolve(previousPath) !== resolve(target)) {
+      this.removeManagedImage(previousPath);
+    }
 
     return {
       cancelled: false,
-      settings: this.settingsStore.patch({ customReminderImagePath: target })
+      settings
     };
   }
 
@@ -106,7 +119,10 @@ export class ReminderImages {
   }
 
   private removeCurrentCustomImage(): void {
-    const path = this.settingsStore.get().customReminderImagePath;
+    this.removeManagedImage(this.settingsStore.get().customReminderImagePath);
+  }
+
+  private removeManagedImage(path: string | null): void {
     if (path && this.isManagedImagePath(path) && existsSync(path)) {
       rmSync(path, { force: true });
     }

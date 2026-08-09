@@ -60,6 +60,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
   const deferredSaves = useRef(new Map<string, { timer: number; patch: AppSettingsPatch }>());
   const isMounted = useRef(true);
   const [dataFeedback, setDataFeedback] = useState<string | null>(null);
+  const [imageFeedback, setImageFeedback] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState | null>(null);
   const [newOverride, setNewOverride] = useState<ScheduleOverride>(() => createScheduleOverrideDraft());
   latestSnapshotSettings.current = snapshot.settings;
@@ -171,6 +172,18 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
       }
     } catch (error) {
       setDataFeedback(error instanceof Error ? error.message : '操作失败');
+    }
+  };
+
+  const selectReminderImage = async () => {
+    setImageFeedback(null);
+    try {
+      const result = await sitlessApi.selectReminderImage();
+      if (!result.cancelled) {
+        setImageFeedback('提醒图片已更新。');
+      }
+    } catch (error) {
+      setImageFeedback(error instanceof Error ? error.message : '提醒图片无效，无法使用。');
     }
   };
 
@@ -401,7 +414,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
           ))}
         </div>
         <div className="quick-actions">
-          <button type="button" onClick={() => sitlessApi.selectReminderImage()}>
+          <button type="button" onClick={() => void selectReminderImage()}>
             <Image size={17} />
             更换图片
           </button>
@@ -410,6 +423,7 @@ export function SettingsView({ snapshot }: { snapshot: AppSnapshot }) {
             恢复默认
           </button>
         </div>
+        {imageFeedback ? <p className="settings-feedback">{imageFeedback}</p> : null}
       </section>
 
       <section className="workspace-panel">

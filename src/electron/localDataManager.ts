@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { extname, join } from 'node:path';
+import { join } from 'node:path';
 import {
   normalizeDaySessionFile,
   normalizeRuntimeState,
@@ -14,6 +14,11 @@ import type { ReminderWindows } from './reminderWindows';
 import { writeDiagnosticLog } from './diagnosticLog';
 import { commitImportFiles, type ImportFiles } from './importTransaction';
 import { redactLocalPaths } from './diagnosticLogFile';
+import {
+  MAX_REMINDER_IMAGE_BYTES,
+  readValidatedReminderImage,
+  validateReminderImage
+} from './reminderImageValidation';
 
 const MAX_BACKUP_BYTES = 30 * 1024 * 1024;
 
@@ -178,14 +183,12 @@ function readCustomImage(filePath: string | null): BackupPayload['customImage'] 
   if (!filePath || !existsSync(filePath)) {
     return null;
   }
-  const extension = extname(filePath).toLowerCase();
-  if (!['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'].includes(extension)) {
+  try {
+    const { extension, bytes } = readValidatedReminderImage(filePath);
+    return { extension, dataBase64: bytes.toString('base64') };
+  } catch {
     return null;
   }
-  const bytes = readFileSync(filePath);
-  return validateReminderImage(extension, bytes)
-    ? { extension, dataBase64: bytes.toString('base64') }
-    : null;
 }
 
 function decodeCustomImage(image: BackupPayload['customImage']): { extension: string; bytes: Buffer } | null {
@@ -193,7 +196,7 @@ function decodeCustomImage(image: BackupPayload['customImage']): { extension: st
     return null;
   }
   const bytes = Buffer.from(image.dataBase64, 'base64');
-  if (bytes.length === 0 || bytes.length > 20 * 1024 * 1024) {
+  if (bytes.length === 0 || bytes.length > MAX_REMINDER_IMAGE_BYTES) {
     throw new Error('备份中的提醒图片无效或超过 20 MB');
   }
   if (!validateReminderImage(image.extension, bytes)) {
@@ -227,30 +230,4 @@ function addJsonImport(files: ImportFiles, filename: string, value: unknown): vo
   const content = Buffer.from(`${JSON.stringify(value, null, 2)}\n`, 'utf8');
   files[filename] = content;
   files[`${filename}.bak`] = content;
-}
-
-export function validateReminderImage(extension: string, bytes: Buffer): boolean {
-  if (extension === '.png') {
-    return bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-  }
-  if (extension === '.jpg' || extension === '.jpeg') {
-    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  }
-  if (extension === '.gif') {
-    const signature = bytes.subarray(0, 6).toString('ascii');
-    return signature === 'GIF87a' || signature === 'GIF89a';
-  }
-  if (extension === '.webp') {
-    return bytes.subarray(0, 4).toString('ascii') === 'RIFF'
-      && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
-  }
-  if (extension === '.svg') {
-    const source = bytes.toString('utf8').trim();
-    return /^(?:<\?xml[^>]*>\s*)?<svg[\s>]/i.test(source)
-      && !/<(?:script|foreignObject|iframe|object|embed)\b/i.test(source)
-      && !/\bon\w+\s*=/i.test(source)
-      && !/(?:href|src)\s*=\s*["']\s*(?:https?:|file:|javascript:|data:)/i.test(source)
-      && !/<!DOCTYPE|<!ENTITY/i.test(source);
-  }
-  return false;
 }

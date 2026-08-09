@@ -17,6 +17,7 @@ import { SettingsStore } from './settingsStore';
 import { StartupPreferences } from './startupPreferences';
 import { StatsStore } from './statsStore';
 import { UpdateManager } from './updateManager';
+import { formatDiagnosticError } from './diagnosticLogFile';
 
 registerReminderImageScheme();
 
@@ -36,6 +37,24 @@ const windows = new ReminderWindows(
 if (process.env.SITLESS_USER_DATA_DIR) {
   app.setPath('userData', process.env.SITLESS_USER_DATA_DIR);
 }
+
+process.on('uncaughtExceptionMonitor', (error, origin) => {
+  writeDiagnosticLog('process-error', `origin=${origin} ${formatDiagnosticError(error)}`);
+});
+
+app.on('render-process-gone', (_event, _webContents, details) => {
+  writeDiagnosticLog(
+    'renderer-gone',
+    `reason=${details.reason} exitCode=${details.exitCode}`
+  );
+});
+
+app.on('child-process-gone', (_event, details) => {
+  writeDiagnosticLog(
+    'child-process-gone',
+    `type=${details.type} reason=${details.reason} exitCode=${details.exitCode}`
+  );
+});
 
 const gotLock = process.env.SITLESS_SKIP_GLOBAL_INSTANCE_LOCK === '1'
   || app.requestSingleInstanceLock();

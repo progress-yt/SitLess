@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -83,6 +83,51 @@ describe('ReminderImages managed file cleanup', () => {
     expect(response?.status).toBe(404);
     expect(net.fetch).not.toHaveBeenCalled();
   });
+
+  it('validates a selected image before replacing the managed file', async () => {
+    const source = join(rootPath, 'spoofed.png');
+    writeFileSync(source, 'not-a-png', 'utf8');
+    const harness = createImageHarness(null, source);
+
+    await expect(harness.images.select()).rejects.toThrow('内容与文件格式不匹配');
+
+    expect(harness.settings.customReminderImagePath).toBeNull();
+    expect(existsSync(join(electronMock.userDataPath, 'images', 'reminder.png'))).toBe(false);
+  });
+
+  it('replaces a previous image only after the new image is ready', async () => {
+    const managedDirectory = join(electronMock.userDataPath, 'images');
+    mkdirSync(managedDirectory, { recursive: true });
+    const previousPath = join(managedDirectory, 'reminder.jpg');
+    writeFileSync(previousPath, Buffer.from([0xff, 0xd8, 0xff]));
+    const source = join(rootPath, 'next.png');
+    const sourceBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    writeFileSync(source, sourceBytes);
+    const harness = createImageHarness(previousPath, source);
+
+    const result = await harness.images.select();
+    const nextPath = join(managedDirectory, 'reminder.png');
+
+    expect(result.cancelled).toBe(false);
+    expect(harness.settings.customReminderImagePath).toBe(nextPath);
+    expect(readFileSync(nextPath)).toEqual(sourceBytes);
+    expect(existsSync(previousPath)).toBe(false);
+  });
+
+  it('keeps the previous image when saving the new setting fails', async () => {
+    const managedDirectory = join(electronMock.userDataPath, 'images');
+    mkdirSync(managedDirectory, { recursive: true });
+    const previousPath = join(managedDirectory, 'reminder.jpg');
+    writeFileSync(previousPath, Buffer.from([0xff, 0xd8, 0xff]));
+    const source = join(rootPath, 'next.png');
+    writeFileSync(source, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const harness = createImageHarness(previousPath, source, true);
+
+    await expect(harness.images.select()).rejects.toThrow('settings write failed');
+
+    expect(existsSync(previousPath)).toBe(true);
+    expect(harness.settings.customReminderImagePath).toBe(previousPath);
+  });
 });
 
 describe('ReminderImages protocol privileges', () => {
@@ -102,7 +147,7 @@ describe('ReminderImages protocol privileges', () => {
   });
 });
 
-function createImageHarness(customReminderImagePath: string | null) {
+function createImageHarness(customReminderImagePath: string | null, selectedPath?: string, failPatch = false) {
   let settings: AppSettings = {
     ...createDefaultSettings(),
     customReminderImagePath
@@ -110,12 +155,18 @@ function createImageHarness(customReminderImagePath: string | null) {
   const settingsStore = {
     get: () => settings,
     patch: (patch: Partial<AppSettings>) => {
+      if (failPatch) {
+        throw new Error('settings write failed');
+      }
       settings = { ...settings, ...patch };
       return settings;
     }
   };
   const windows = {
-    showOpenDialog: vi.fn()
+    showOpenDialog: vi.fn(async () => ({
+      canceled: !selectedPath,
+      filePaths: selectedPath ? [selectedPath] : []
+    }))
   } as unknown as ReminderWindows;
 
   return {

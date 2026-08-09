@@ -30,6 +30,13 @@ export function redactLocalPaths(value: string, paths: string[]): string {
   }, value);
 }
 
+export function formatDiagnosticError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}${error.stack ? ` ${error.stack}` : ''}`;
+  }
+  return String(error);
+}
+
 function replaceLiteralIgnoreCase(value: string, search: string, replacement: string): string {
   if (!search) {
     return value;

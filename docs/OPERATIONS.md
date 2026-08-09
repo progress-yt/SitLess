@@ -11,6 +11,7 @@ SitLess 的设置、统计、工作日记录和运行状态保存在 Electron `u
 - 诊断 JSON 导出，包含版本、运行环境、规范化设置、运行状态和最近日志。导出时会隐藏用户目录与自定义图片路径；工作时段等配置仍可能敏感，提交给他人前应先检查内容。
 
 诊断日志超过 512 KB 后会轮转到 `sitless.1.log`，最多保留当前日志和一个历史日志。
+主进程未捕获异常、渲染进程退出和 Electron 子进程异常也会写入诊断日志，异常仍交由运行时按默认策略处理。
 
 ## 自动更新
 
@@ -45,3 +46,5 @@ npm run dist
 ```powershell
 npm run release:check
 ```
+
+普通 push 到 `main` 或 pull request 会触发 `.github/workflows/ci.yml`，在 Windows 上执行单元测试和 Electron 烟雾测试。发布标签仍由独立的发布流水线处理。

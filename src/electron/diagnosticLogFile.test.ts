@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { appendRotatingLog, redactLocalPaths } from './diagnosticLogFile';
+import { appendRotatingLog, formatDiagnosticError, redactLocalPaths } from './diagnosticLogFile';
 
 describe('diagnostic log files', () => {
   it('rotates the current log before it exceeds the configured limit', () => {
@@ -23,5 +23,10 @@ describe('diagnostic log files', () => {
     );
 
     expect(output).toBe('<userData>\\settings.json <userHome>/Desktop');
+  });
+
+  it('formats Error objects and unknown rejection values', () => {
+    expect(formatDiagnosticError(new TypeError('invalid state'))).toContain('TypeError: invalid state');
+    expect(formatDiagnosticError('plain failure')).toBe('plain failure');
   });
 });
