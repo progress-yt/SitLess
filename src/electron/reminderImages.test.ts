@@ -78,7 +78,7 @@ describe('ReminderImages managed file cleanup', () => {
     harness.images.registerProtocolHandler();
     const handler = vi.mocked(protocol.handle).mock.calls.at(-1)?.[1];
 
-    const response = await handler?.({ url: 'sitless://other/path' } as Electron.ProtocolRequest);
+    const response = await handler?.(new Request('sitless://other/path'));
 
     expect(response?.status).toBe(404);
     expect(net.fetch).not.toHaveBeenCalled();

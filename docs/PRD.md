@@ -6,11 +6,11 @@
 
 ## Solution
 
-SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻，默认在周一到周五工作时间内运行，并排除可配置午休时间。默认提醒模式为“连续活跃使用达到阈值后提醒”，也支持切换为“固定间隔提醒”。
+SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻，按每周日程和日期例外控制工作时间，并排除可配置午休时间。默认提醒模式为“连续活跃使用达到阈值后提醒”，也支持切换为“固定间隔提醒”。
 
 提醒触发后，软件根据用户选择的提醒强度逐级处理。标准模式先发出 Windows 系统通知和轻提示音，再显示置顶倒计时小窗；倒计时默认 10 秒，超时后在主显示器全屏显示当前提醒图片。全屏页先用柔和、可自定义的文案邀请用户开始休息，达到可配置的最短休息时长后才允许确认完成；遇到紧急工作时，用户可以随时临时中断并稍后再次接收提醒。
 
-所有配置和统计数据保存在本地 JSON 文件中。界面展示日、周、月汇总和最近 30 天明细，并继续按日期保存历史数据，为后续趋势功能预留空间。
+所有配置和统计数据保存在本地 JSON 文件中。界面展示日、周、月汇总、最近 30 天明细和最近 14 天趋势，并支持本地备份、导入、CSV 与诊断信息导出。
 
 ## User Stories
 
@@ -19,8 +19,8 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 3. As a user, I want the app to live in the system tray, so that it can remind me without occupying my taskbar.
 4. As a user, I want the app to ask whether to enable startup on first launch, so that I can choose whether reminders start automatically with Windows.
 5. As a user, I want to enable or disable startup later in settings, so that I can change my mind.
-6. As a user, I want reminders to run only Monday to Friday, so that weekends do not trigger work reminders.
-7. As a user, I want one shared work schedule for Monday to Friday, so that setup is simple.
+6. As a user, I want each weekday to be enabled or disabled independently, so that reminders match flexible work weeks.
+7. As a user, I want per-day work hours and date overrides, so that temporary shifts and days off are represented explicitly.
 8. As a user, I want default work hours of 09:00-18:00, so that the app works with a common office schedule immediately.
 9. As a user, I want to edit start and end work times, so that reminders match my actual schedule.
 10. As a user, I want lunch break time to be configurable, so that reminders do not fire during lunch.
@@ -69,6 +69,9 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 53. As a user, I want statistics stored locally by date, so that future versions can show trends without data migration.
 54. As a privacy-conscious user, I want no camera, cloud, or account dependency, so that the app does not collect sensitive personal data.
 55. As a user, I want a Windows installer, so that installation feels like a normal desktop app.
+56. As a user, I want fullscreen or active meeting contexts to pause reminder accumulation, so that reminders do not interrupt presentations and calls.
+57. As a user, I want local backup, restore, CSV, and diagnostics export, so that I can retain and troubleshoot my data without an account.
+58. As a user, I want signed packaged builds to check for updates, so that security and bug fixes can be delivered safely.
 
 ## Implementation Decisions
 
@@ -86,8 +89,9 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - 设置页只展示当前提醒模式相关的模式配置；连续活跃模式展示活跃阈值和无输入重置，固定间隔模式展示固定间隔。
 - 稍后提醒、倒计时等两种模式通用的配置应与模式专属配置分组展示。
 - 切换提醒模式后，当前提醒周期重新开始，避免旧模式累计时间导致新模式立即触发提醒。
-- Schedule rules for v1 are Monday-Friday only, with weekends disabled.
-- Monday-Friday use one shared same-day work-time range; overnight schedules are not supported in v1.
+- Schedule rules use an independently configurable seven-day weekly schedule, with weekends disabled by default.
+- Date overrides take precedence over the weekly schedule and can represent temporary workdays or days off.
+- Each enabled day uses one same-day work-time range; overnight schedules are not supported.
 - Default work time is 09:00-18:00.
 - Lunch break is configurable and excluded from reminders.
 - The default lunch break is 12:00-13:30.
@@ -130,7 +134,11 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - Statistics are stored in local JSON grouped by date.
 - 手动修正历史记录时，完成和跳过次数不能超过提醒次数；应用会同步规范化界面输入与持久化数据。
 - v1 UI displays reminder count, completed rest count, skipped count, snoozed count, interrupted count, rest duration, longest focus duration, and completion rate.
-- Historical statistics are still persisted by date to avoid future migration when trend views are added.
+- Historical statistics are persisted by date and drive the detailed-record and trend views.
+- The renderer loads 30-day records and 14-day trends on demand rather than sending them in every realtime snapshot.
+- Foreground fullscreen applications and active meeting windows pause reminder accumulation when focus-context handling is enabled.
+- Settings, statistics, workday sessions, runtime state, the daily poem, and a managed reminder image can be exported and restored as one local backup transaction.
+- Packaged builds support opt-out automatic updates through a signed HTTPS release channel; development builds never check for updates.
 
 ## Testing Decisions
 
@@ -153,14 +161,13 @@ SitLess 是一个个人 Windows 桌面端久坐提醒软件。软件托盘常驻
 - Team management, admin dashboard, reports for other users, or enterprise policy control.
 - Accounts, cloud sync, remote storage, or online image fetching.
 - Camera, posture detection, Bluetooth device detection, or physical standing verification.
-- Automatic meeting, screen-sharing, or full-screen-app detection.
+- Deep screen-sharing detection or background call detection when the meeting window is not active.
 - Covering all monitors during fullscreen reminder.
 - Multiple reminder images, random image selection, slideshow, image folders, or built-in gallery management.
 - In-app image cropping tools or fit-mode customization.
-- Full historical charts, weekly reports, streaks, or analytics dashboards.
-- Auto-update in the first packaged version.
+- Predictive analytics, cross-device reports, or team dashboards.
 - Forced lock screen, input blocking, or OS-level prevention of closing the app.
-- Separate per-day schedule configuration or multiple custom no-reminder time ranges.
+- Multiple custom no-reminder ranges within one day or overnight work schedules.
 
 ## Further Notes
 

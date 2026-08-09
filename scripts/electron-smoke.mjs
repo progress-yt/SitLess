@@ -73,6 +73,27 @@ try {
 }
 
 async function verifyMainWindow(webSocketUrl) {
+  await waitForExpression(
+    webSocketUrl,
+    `(() => {
+      const metrics = [...document.querySelectorAll('.metric-row > span')].map((item) => item.textContent?.trim());
+      const periods = [...document.querySelectorAll('[aria-label="统计周期"] button')].map((item) => item.textContent?.trim());
+      return ['提醒', '已起身', '跳过', '稍后', '中断', '休息时长', '最长久坐', '连续完成']
+        .every((label) => metrics.includes(label)) && periods.join(',') === '日,周,月';
+    })()`,
+    'home statistics'
+  );
+  await clickButton(webSocketUrl, '周');
+  await waitForExpression(webSocketUrl, "document.body.innerText.includes('本周统计')", 'weekly statistics');
+  await clickButton(webSocketUrl, '月');
+  await waitForExpression(webSocketUrl, "document.body.innerText.includes('本月统计')", 'monthly statistics');
+  await clickButton(webSocketUrl, '趋势');
+  await waitForExpression(
+    webSocketUrl,
+    "document.querySelectorAll('.trend-column').length === 14 && document.body.innerText.includes('休息与完成趋势')",
+    'fourteen day trend'
+  );
+  await clickButton(webSocketUrl, '状态');
   await clickButton(webSocketUrl, '设置');
   await waitForExpression(
     webSocketUrl,
@@ -87,6 +108,23 @@ async function verifyMainWindow(webSocketUrl) {
   await waitForStoredSettings((settings) =>
     settings.overtimeAutoEndMinutes === 17 && settings.countdownSeconds === 4
   );
+  await clickButton(webSocketUrl, '照片 1真实办公空间');
+  await waitForStoredSettings((settings) => settings.builtInReminderImageId === 'photo-1');
+  await waitForExpression(
+    webSocketUrl,
+    `(() => {
+      const active = [...document.querySelectorAll('.built-in-image-options button')]
+        .find((button) => button.textContent?.includes('照片 1'));
+      const preview = document.querySelector('.image-preview');
+      return active?.classList.contains('active')
+        && preview instanceof HTMLImageElement
+        && preview.complete
+        && preview.naturalWidth > 0;
+    })()`,
+    'built-in reminder image preview'
+  );
+  await clickButton(webSocketUrl, '办公桌柔和室内场景');
+  await waitForStoredSettings((settings) => settings.builtInReminderImageId === 'desk');
   await clickButton(webSocketUrl, '详细记录');
   await waitForExpression(
     webSocketUrl,

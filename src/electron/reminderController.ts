@@ -971,7 +971,7 @@ export class ReminderController extends EventEmitter {
   }
 
   private getRestExercise(now: Date) {
-    const seed = Number(getDateKey(this.getCurrentReminderDate(now)).replaceAll('-', '')) + this.statsStore.getToday(now).reminders;
+    const seed = Number(getDateKey(this.getCurrentReminderDate(now)).replace(/-/g, '')) + this.statsStore.getToday(now).reminders;
     return REST_EXERCISES[Math.abs(seed) % REST_EXERCISES.length];
   }
 

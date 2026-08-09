@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type { RealtimeSnapshot } from '../shared/types';
 import { createBrowserFallbackApi } from './browserFallbackApi';
 
 describe('browser fallback API', () => {
   it('emits state-changing snapshots and stops after unsubscribe', async () => {
     const api = createBrowserFallbackApi();
     const initial = await api.getSnapshot();
-    const snapshots = [] as Array<typeof initial>;
+    const snapshots: RealtimeSnapshot[] = [];
     const unsubscribe = api.onSnapshot((snapshot) => snapshots.push(snapshot));
 
     await api.updateSettings({

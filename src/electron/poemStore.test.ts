@@ -90,14 +90,11 @@ describe('PoemStore', () => {
         });
       });
       const store = new PoemStore();
-      let result: Awaited<ReturnType<PoemStore['refreshToday']>> | null = null;
-
-      void store.refreshToday(new Date('2026-06-10T10:00:00'), { force: true }).then((poem) => {
-        result = poem;
-      });
+      const refresh = store.refreshToday(new Date('2026-06-10T10:00:00'), { force: true });
       await vi.advanceTimersByTimeAsync(5001);
+      const result = await refresh;
 
-      expect(result?.source).toBe('fallback');
+      expect(result.source).toBe('fallback');
     } finally {
       vi.useRealTimers();
     }
